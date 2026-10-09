@@ -1,0 +1,17 @@
+# React 前端套件
+node_modules/
+build/
+dist/
+
+# Python 後端虛擬環境與暫存
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# 系統暫存檔
+.DS_Store
+Thumbs.db
+
+# 機密設定檔
+.env
