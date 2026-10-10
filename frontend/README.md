@@ -1,16 +1,36 @@
-# React + Vite
+# 🍳 北寧路早餐店點餐與管理系統 (Breakfast Ordering & Management System)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+本專案是一個專為校園周邊早餐店設計的輕量級點餐與營運管理系統，採用前後端分離的概念，並針對行動端與桌面端進行最佳化響應式設計。
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 👥 雙核心介面設計 (Dual-Role Architecture)
 
-## React Compiler
+本系統區分為兩個主要操作視圖，以滿足不同場景的需求：
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+1. **📱 顧客手機版 (Customer App)**
+   - **情境**：顧客掃描桌上 QR Code 進入。
+   - **特性**：採用手機優先（Mobile-First）的直覺式介面、置中行動裝置外框、流暢的菜單瀏覽與購物車互動。
+2. **💻 老闆電腦版後台 (Owner App)**
+   - **情境**：店內櫃台電腦或平板使用。
+   - **特性**：寬螢幕滿版設計、即時接單列表、營業數據統計與菜單管理大表格。
 
-## Expanding the ESLint configuration
+---
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## 🛠️ 技術堆疊 (Tech Stack)
+
+* **前端框架**：React + Vite
+* **樣式工具**：Tailwind CSS
+* **路由管理**：React Router DOM
+* **開發環境**：Node.js / npm
+
+---
+
+## 🚀 快速開始指南 (Local Development & Setup)
+
+如果這是妳第一次把專案抓回本機，請依照以下步驟快速建立開發環境：
+
+### 1. 複製專案
+```bash
+git clone [https://github.com/你的帳號名稱/Breakfast_System.git](https://github.com/你的帳號名稱/Breakfast_System.git)
+cd Breakfast_System/frontend
