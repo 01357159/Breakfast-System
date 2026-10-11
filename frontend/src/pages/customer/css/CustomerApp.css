@@ -1,159 +1,69 @@
+body {
+    background-color: #f3f4f6;
+}
+
 /* ==========================================================
    1. 外層容器 (Container)
-   ================================================---------- */
+   ========================================================== */
 .customer-app-container {
   display: flex;
   justify-content: center;
   align-items: center;
-  min-height: 100vh;
-  background-color: #f3f4f6; /* 電腦端背景灰色 */
-  padding: 16px;
+  max-height: 100vh;
+  padding-top: 5vh;
   box-sizing: border-box;
 }
 
-
 /* ==========================================================
-   2. 主內容卡片 (Card)
-   ================================================---------- */
+   2. 電腦版預設：主內容卡片 (Card)
+   針對 Home 頁面，電腦版保持精美的手機模擬卡片外框
+   ========================================================== */
 .customer-app-card {
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
   width: 100%;
-  max-width: 380px;          /* 稍微收窄寬度，更符合手機視覺 */
-  height: 80vh;              /* 稍微降低總高度，讓上下不那麼空 */
-  max-height: 700px;
+  max-width: 420px;      /* 電腦看 Home 時的舒適手機寬度 */
+  height: 85vh;          /* 電腦看 Home 時的高度限制 */
+  max-height: 800px;
   background-color: #ffffff;
   border-radius: 24px;
-  padding: 20px;             /* 縮小卡片內部四周留白 */
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
   box-sizing: border-box;
+  overflow: hidden;
+  transition: all 0.3s ease; /* 讓切換頁面時有平滑感 */
+}
+
+/* 💡 如果目前路徑是 Menu，我們在電腦版把卡片放大成全螢幕或寬螢幕大畫面 */
+.customer-app-card.menu-mode {
+  max-width: 900px !important;  /* 電腦看菜單時變寬 */
+  height: 90vh !important;       /* 變高 */
+  max-height: 900px !important;
 }
 
 
 /* ==========================================================
-   3. 手機響應式設定 (小於 640px 螢幕，如 Redmi Note 14 Pro)
-   ================================================---------- */
+   3. 手機響應式設定 (小於 640px 螢幕，全面強制手機 App 框體)
+   ========================================================== */
 @media screen and (max-width: 640px) {
   .customer-app-container {
-    background-color: #ffffff; /* 手機全屏改為純白 */
+    background-color: #ffffff;
     padding: 0;
     width: 100vw;
-    height: 100vh;
+    height: 100dvh;
+    position: fixed;
+    top: 0;
+    left: 0;
+    overflow: hidden;
   }
 
-  .customer-app-card {
+  .customer-app-card, 
+  .customer-app-card.menu-mode {
     max-width: 100% !important;
-    height: 100% !important;
+    width: 100vw !important;
+    height: 100dvh !important;
     max-height: none !important;
     border-radius: 0 !important;
     box-shadow: none !important;
-    padding: 0px 20px 125px 20px;      /* 縮减上下 padding，讓內容更緊密 */
-    justify-content: space-around; /* 改用 space-around 讓內部元件距離更自然、緊湊 */
+    overflow: hidden;
   }
-}
-
-
-/* ==========================================================
-   4. 頂部標題區 (Header)
-   ================================================---------- */
-.customer-app-header {
-  text-align: center;
-}
-
-.customer-app-title {
-  font-size: 21px;
-  font-weight: bold;
-  color: #1f2937;
-  margin: 0 0 2px 0;
-}
-
-.customer-app-subtitle {
-  font-size: 12px;
-  color: #9ca3af;
-  margin: 0;
-}
-
-
-/* ==========================================================
-   5. 中間內容區 (Content - 座號與圖片)
-   ================================================---------- */
-.customer-app-content {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;                 /* 縮小座號與圖片之間的距離 */
-  margin: 0;                 /* 移除原本的 auto，避免被撐太開 */
-}
-
-
-/* ==========================================================
-   6. 座號顯示徽章 (Seat Badge)
-   ================================================---------- */
-.customer-seat-badge {
-  background-color: #fff7ed;
-  border: 1px solid #ffedd5;
-  padding: 8px 18px;         /* 稍微縮減內距 */
-  border-radius: 14px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.customer-seat-label {
-  font-size: 13px;
-  color: #9a3412;
-}
-
-.customer-seat-text {
-  font-size: 18px;
-  font-weight: bold;
-  color: #ea580c;
-}
-
-
-/* ==========================================================
-   7. 圖片容器與圖片本身 (Image)
-   ================================================---------- */
-.customer-image-container {
-  width: 100%;
-  max-width: 220px;          /* 稍微調小圖片尺寸，讓手機畫面更協調 */
-  aspect-ratio: 1 / 1;
-  border-radius: 16px;
-  overflow: hidden;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-  background-color: #e5e7eb;
-}
-
-.customer-image {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-
-/* ==========================================================
-   8. 底部按鈕區 (Footer & Button)
-   ================================================---------- */
-.customer-app-footer {
-  width: 100%;
-}
-
-.customer-start-btn {
-  width: 100%;
-  padding: 14px;             /* 稍微調降按鈕高度，整體更精緻 */
-  background-color: #ea580c;
-  color: #ffffff;
-  font-size: 17px;
-  font-weight: bold;
-  border: none;
-  border-radius: 16px;
-  cursor: pointer;
-  box-shadow: 0 4px 12px rgba(234, 88, 12, 0.3);
-  transition: background-color 0.2s;
-}
-
-.customer-start-btn:hover {
-  background-color: #c2410c;
 }

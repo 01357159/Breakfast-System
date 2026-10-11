@@ -1,0 +1,105 @@
+/* 讓內容區填滿整個卡片，並採用 space-between 緊密排列 */
+.home-content-wrapper {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 100%;
+  height: 100%;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+/* 頂部標題區 */
+.home-header {
+  text-align: center;
+  flex-shrink: 0;
+  padding-top: 2vh;
+}
+
+.home-title {
+  font-size: 20px;
+  font-weight: bold;
+  color: #1f2937;
+  margin: 0 0 2px 0;
+}
+
+.home-subtitle {
+  font-size: 12px;
+  color: #9ca3af;
+  margin: 0;
+}
+
+/* 中間主要內容區 */
+.home-main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-grow: 1;
+}
+
+/* 座號顯示徽章 */
+.home-seat-badge {
+  background-color: #fff7ed;
+  border: 1px solid #ffedd5;
+  padding: 8px 16px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.home-seat-label {
+  font-size: 13px;
+  color: #9a3412;
+}
+
+.home-seat-text {
+  font-size: 18px;
+  font-weight: bold;
+  color: #ea580c;
+}
+
+/* 圖片容器 */
+.home-image-container {
+  width: 100%;
+  max-width: 200px;
+  aspect-ratio: 1 / 1;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  background-color: #e5e7eb;
+  flex-shrink: 1;
+}
+
+.home-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* 底部按鈕區 */
+.home-footer {
+  width: 100%;
+  flex-shrink: 0;
+}
+
+.home-start-btn {
+  width: 100%;
+  padding: 14px;
+  background-color: #ea580c;
+  color: #ffffff;
+  font-size: 17px;
+  font-weight: bold;
+  border: none;
+  border-radius: 16px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(234, 88, 12, 0.3);
+  transition: background-color 0.2s;
+}
+
+.home-start-btn:hover {
+  background-color: #c2410c;
+}
