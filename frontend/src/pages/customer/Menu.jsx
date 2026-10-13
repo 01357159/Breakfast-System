@@ -19,8 +19,19 @@ export default function Menu() {
   const categoryRefs = useRef({});
 
   useEffect(() => {
-    const items = getMenu();
-    setMenuItems(items);
+    // 頁面開啟時先讀取最新菜單
+    function syncMenu() {
+      setMenuItems(getMenu());
+    }
+
+    syncMenu();
+
+    // 當其他分頁修改菜單時，自動更新
+    window.addEventListener('storage', syncMenu);
+
+    return () => {
+      window.removeEventListener('storage', syncMenu);
+    };
   }, []);
 
   useEffect(() => {
@@ -103,6 +114,13 @@ export default function Menu() {
     const newOrder = {
       orderId: 'ORD-' + Date.now().toString().slice(-6),
       seat: seatNumber,
+      createdDate: (() => {        // 記錄顧客下單的日期
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      })(),
       items: orderItems,
       totalPrice: totalPrice,
       pickupTime: pickupTime,
