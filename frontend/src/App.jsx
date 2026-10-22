@@ -3,11 +3,12 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 // 引入顧客端與老闆端各自的主容器（或大檔案入口）
 import CustomerApp from './pages/customer/CustomerApp.jsx';
 import OwnerApp from './pages/owner/OwnerApp.jsx';
+import AuthProvider from './auth/AuthProvider.jsx';
 
 function App() {
   return (
     
-    <Router>
+    <AuthProvider><Router>
       <Routes>        
         {/* ================= 1. 根目錄預設導向 ================= */}
         {/* 依照妳的需求，預設進來可以先導向顧客端 (掃 QR code 情境) */}
@@ -24,7 +25,7 @@ function App() {
         {/* ================= 4. 404 頁面防護 ================= */}
         <Route path="*" element={<div className="p-8 text-center text-red-500">404 - 找不到此頁面</div>} />
       </Routes>
-    </Router>
+    </Router></AuthProvider>
   );
 }
 
