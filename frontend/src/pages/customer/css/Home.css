@@ -103,3 +103,5 @@
 .home-start-btn:hover {
   background-color: #c2410c;
 }
+
+.home-reviews-btn { width: 100%; padding: 12px; margin-top: 10px; background: white; border: 1px solid #fed7aa; border-radius: 12px; color: #9a3412; cursor: pointer; font: inherit; }

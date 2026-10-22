@@ -5,17 +5,11 @@ import {
 } from '../../data/menuData';
 import { useEffect, useState } from 'react';
 import './css/OwnerApp.css';
-
-// 從瀏覽器讀取顧客送出的訂單
-function readOrders() {
-  try {
-    return JSON.parse(
-      localStorage.getItem('breakfast_orders') || '[]'
-    );
-  } catch {
-    return [];
-  }
-}
+import { useAuth } from '../../auth/authContext';
+import AuthControls from '../../auth/AuthControls';
+import ReviewBoard from '../../reviews/ReviewBoard';
+import { ownerOrders, setOrderStatus, readLocalOrders } from '../../data/orderService';
+import { supabase } from '../../lib/supabase';
 
 function getTodayDateKey() {
   const now = new Date();
@@ -27,9 +21,23 @@ function getTodayDateKey() {
 }
 
 export default function OwnerApp() {
+  const auth = useAuth();
+  if (auth.configured && (auth.loading || !auth.user || !auth.isOwner || auth.error)) {
+    return <main className="review-owner-gate"><h1>早餐店老闆後台</h1>
+      <p>{auth.loading ? '正在確認店家權限…' : auth.user ? '此帳號尚未取得店家權限，請聯絡管理員。' : '請使用授權的店家 Google 帳號登入。'}</p>
+      <AuthControls owner />
+    </main>;
+  }
+  return <OwnerDashboard key={auth.user?.id || 'local'} />;
+}
+
+function OwnerDashboard() {
+  const auth = useAuth();
   // orders 是目前畫面使用的訂單資料
   // setOrders 是更新訂單資料的方法
-  const [orders, setOrders] = useState(readOrders);
+  const [orders, setOrders] = useState(() => supabase ? [] : readLocalOrders());
+  const [orderError, setOrderError] = useState('');
+  const [busyOrder, setBusyOrder] = useState(null);
 
   // 目前的菜單資料
   const [menuItems, setMenuItems] = useState(getMenu);
@@ -77,39 +85,43 @@ export default function OwnerApp() {
 
   useEffect(() => {
     // 當其他分頁更新訂單時，自動重新讀取
-    function syncOrders() {
-      setOrders(readOrders());
+    let alive = true;
+    let running = false;
+    async function syncOrders() {
+      if (running) return;
+      running = true;
+      try {
+        const next = await ownerOrders();
+        if (alive) { setOrders(next); setOrderError(''); }
+      } catch (error) { if (alive) setOrderError(error.message); }
+      finally { running = false; }
     }
+    syncOrders();
 
     // 監聽同一網站來源的其他分頁
     window.addEventListener('storage', syncOrders);
 
-    // 每秒重新讀取一次，作為保險同步機制
-    const timer = setInterval(syncOrders, 1000);
+    // 每五秒同步一次，包含其他裝置送出的訂單
+    const timer = setInterval(syncOrders, 5000);
 
     // 元件離開時，清除監聽器與計時器
     return () => {
+      alive = false;
       window.removeEventListener('storage', syncOrders);
       clearInterval(timer);
     };
   }, []);
 
   // 更新訂單狀態，並儲存回瀏覽器
-  function updateStatus(orderId, newStatus) {
-    const updatedOrders = orders.map((order) => {
-      if (order.orderId === orderId) {
-        return { ...order, status: newStatus };
-      }
-
-      return order;
-    });
-
-    localStorage.setItem(
-      'breakfast_orders',
-      JSON.stringify(updatedOrders)
-    );
-
-    setOrders(updatedOrders);
+  async function refreshOrders() {
+    try { setOrders(await ownerOrders()); setOrderError(''); }
+    catch (error) { setOrderError(error.message); }
+  }
+  async function updateStatus(orderId, newStatus) {
+    setBusyOrder(orderId); setOrderError('');
+    try { await setOrderStatus(orderId,newStatus); await refreshOrders(); }
+    catch (error) { setOrderError(error.message); }
+    finally { setBusyOrder(null); }
   }
 
   const statusNames = {
@@ -227,6 +239,7 @@ export default function OwnerApp() {
       <header className="owner-header">
         <h1>早餐店老闆後台</h1>
         <p>即時訂單及餐點管理</p>
+        {auth.configured && <AuthControls owner />}
       </header>
 
       <nav className="owner-tabs">
@@ -245,7 +258,11 @@ export default function OwnerApp() {
         >
           🍳 餐點管理
         </button>
+        <button type="button" className={activeTab === 'reviews' ? 'active' : ''} onClick={() => setActiveTab('reviews')}>★ 顧客評論</button>
       </nav>
+
+      {activeTab === 'reviews' && <section className="owner-panel"><ReviewBoard owner /></section>}
+      {orderError && <p role="alert" className="review-error">{orderError}</p>}
 
       
       {/* 菜單管理 */}
@@ -381,7 +398,7 @@ export default function OwnerApp() {
         <section className="owner-panel">
           <div className="owner-panel-heading">
             <h2>顧客訂單</h2>
-            <button onClick={() => setOrders(readOrders())}>
+            <button onClick={refreshOrders}>
               重新讀取
             </button>
           </div>
@@ -421,6 +438,7 @@ export default function OwnerApp() {
                   {order.status === 'pending' && (
                     <>
                       <button
+                        disabled={busyOrder === order.orderId}
                         onClick={() =>
                           updateStatus(order.orderId, 'accepted')
                         }
@@ -429,6 +447,7 @@ export default function OwnerApp() {
                       </button>
 
                       <button
+                        disabled={busyOrder === order.orderId}
                         className="reject-button"
                         onClick={() =>
                           updateStatus(order.orderId, 'rejected')
@@ -441,6 +460,7 @@ export default function OwnerApp() {
 
                   {order.status === 'accepted' && (
                     <button
+                      disabled={busyOrder === order.orderId}
                       onClick={() =>
                         updateStatus(order.orderId, 'completed')
                       }
