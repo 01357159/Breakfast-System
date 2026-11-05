@@ -1,7 +1,7 @@
-import React from 'react';
 import { Routes, Route } from 'react-router-dom';
 import Home from './Home';       // 引入 Home 元件
 import Menu from './Menu';       // 引入 Menu 元件
+import Reviews from '../../reviews/Reviews';
 import './css/CustomerApp.css';
 
 export default function CustomerApp() {
@@ -11,6 +11,7 @@ export default function CustomerApp() {
         <Routes>
           {/* 1. 明確指定的子路由放前面 */}
           <Route path="menu" element={<Menu />} />
+          <Route path="reviews" element={<Reviews />} />
           
           {/* 2. 根目錄 / 預設顯示 Home */}
           <Route path="/" element={<Home />} />

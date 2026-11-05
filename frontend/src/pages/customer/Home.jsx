@@ -49,6 +49,9 @@ export default function Home() {
         <button onClick={handleStartOrder} className="home-start-btn">
           開始點餐 ➔
         </button>
+        <button className="home-reviews-btn" onClick={() => navigate(`/customer/reviews?seat=${encodeURIComponent(seatNumber)}`)}>
+          ★ 查看顧客評價
+        </button>
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import './css/CartModal.css';
 
 export default function CartModal({ 
@@ -10,7 +10,9 @@ export default function CartModal({
   onIncrease, 
   onDecrease, 
   onRemoveItem, 
-  onCheckout 
+  onCheckout,
+  busy = false,
+  error = ''
 }) {
   // 動態生成未來 4 個取餐時間選項（每 10 分鐘一檔）
   const generateTimeOptions = () => {
@@ -36,17 +38,18 @@ export default function CartModal({
   }, 0);
 
   const handleConfirmCheckout = () => {
+    if (busy) return;
     onCheckout(pickupTime);
   };
 
   return (
-    <div className="cart-modal-overlay" onClick={onClose}>
+    <div className="cart-modal-overlay" onClick={busy ? undefined : onClose}>
       <div className="cart-modal-content" onClick={e => e.stopPropagation()}>
         
         {/* 彈窗標題 */}
         <div className="cart-modal-header">
           <h3>🛒 您的購物車明細</h3>
-          <button className="cart-close-btn" onClick={onClose}>✕</button>
+          <button className="cart-close-btn" disabled={busy} onClick={onClose}>✕</button>
         </div>
 
         {/* 購物車品項清單 */}
@@ -63,12 +66,12 @@ export default function CartModal({
 
                 <div className="cart-item-actions">
                   <div className="menu-counter-control">
-                    <button className="counter-btn" onClick={() => onDecrease(Number(id))}>-</button>
+                    <button className="counter-btn" disabled={busy} onClick={() => onDecrease(Number(id))}>-</button>
                     <span className="counter-num">{qty}</span>
-                    <button className="counter-btn" onClick={() => onIncrease(Number(id))}>+</button>
+                    <button className="counter-btn" disabled={busy} onClick={() => onIncrease(Number(id))}>+</button>
                   </div>
                   
-                  <button className="cart-delete-item-btn" onClick={() => onRemoveItem(Number(id))} title="移除此品項">
+                  <button className="cart-delete-item-btn" disabled={busy} onClick={() => onRemoveItem(Number(id))} title="移除此品項">
                     🗑️
                   </button>
                 </div>
@@ -88,6 +91,7 @@ export default function CartModal({
                 <button
                   type="button"
                   key={time}
+                  disabled={busy}
                   className={`pickup-time-chip ${pickupTime === time ? 'active' : ''}`}
                   onClick={() => setPickupTime(time)}
                 >
@@ -102,8 +106,9 @@ export default function CartModal({
             <span className="cart-modal-total-price">總金額：${totalPrice}</span>
           </div>
 
-          <button className="cart-submit-btn" onClick={handleConfirmCheckout}>
-            確認送出訂單
+          {error && <p role="alert" style={{ color: '#b91c1c' }}>{error}</p>}
+          <button className="cart-submit-btn" disabled={busy} onClick={handleConfirmCheckout}>
+            {busy ? '送出中…' : '確認送出訂單'}
           </button>
         </div>
 

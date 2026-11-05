@@ -6,6 +6,12 @@
   font-family: sans-serif;
 }
 
+.owner-tabs { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
+.owner-tabs button { border: 1px solid #cbd5e1; border-radius: 9px; padding: 12px 18px; background: white; color: #334155; cursor: pointer; font: inherit; }
+.owner-tabs button.active { background: #1e293b; color: white; border-color: #1e293b; }
+.owner-header .review-auth span { color: white; }
+.order-actions button:disabled { opacity: .5; cursor: wait; }
+
 .owner-header {
   padding: 24px;
   margin-bottom: 24px;
