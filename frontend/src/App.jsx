@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 
 // 引入顧客端與老闆端各自的主容器（或大檔案入口）
 import CustomerApp from './pages/customer/CustomerApp.jsx';
+import OwnerApp1 from './pages/owner1/OwnerApp.jsx';
 import OwnerApp from './pages/owner/OwnerApp.jsx';
 
 function App() {
@@ -19,7 +20,8 @@ function App() {
 
         {/* ================= 3. 老闆端專區 (Owner) ================= */}
         {/* 包裹著所有老闆端的電腦版後台頁面與邏輯 */}
-        <Route path="/owner/*" element={<OwnerApp />} />
+        <Route path="/admin/*" element={<OwnerApp1 />} />
+        <Route path="/admin/dashboard" element={<OwnerApp />} />
 
         {/* ================= 4. 404 頁面防護 ================= */}
         <Route path="*" element={<div className="p-8 text-center text-red-500">404 - 找不到此頁面</div>} />

@@ -103,3 +103,20 @@
 .home-start-btn:hover {
   background-color: #c2410c;
 }
+
+/* 使用者/會員登入按鈕樣式 */
+.home-user-login-btn {
+  background-color: #eff6ff;
+  color: #2563eb;
+  border: 1px solid #bfdbfe;
+  font-size: 13px;
+  font-weight: bold;
+  padding: 6px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.home-user-login-btn:hover {
+  background-color: #dbeafe;
+}

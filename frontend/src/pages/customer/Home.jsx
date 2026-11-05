@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import './css/Home.css';
 
@@ -11,11 +11,23 @@ export default function Home() {
     navigate(`/customer/menu?seat=${seatNumber}`);
   };
 
+  // 💡 點擊跳轉到使用者登入頁面 (可依你的實際路由調整，例如 /login)
+  const handleUserLogin = () => {
+    navigate(`/login?seat=${seatNumber}`);
+  };
+
   return (
     <div className="home-content-wrapper">
-      <div className="home-header">
-        <h1 className="home-title">北寧路早餐店</h1>
-        <p className="home-subtitle">自助點餐系統</p>
+      
+      {/* 頂部導覽列：加入使用者登入按鈕 */}
+      <div className="home-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <h1 className="home-title">北寧路早餐店</h1>
+          <p className="home-subtitle">自助點餐系統</p>
+        </div>
+        <button onClick={handleUserLogin} className="home-user-login-btn">
+          👤 會員登入
+        </button>
       </div>
 
       <div className="home-main">
