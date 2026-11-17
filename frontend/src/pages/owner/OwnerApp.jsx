@@ -10,6 +10,7 @@ import AuthControls from '../../auth/AuthControls';
 import ReviewBoard from '../../reviews/ReviewBoard';
 import { ownerOrders, setOrderStatus, readLocalOrders } from '../../data/orderService';
 import { supabase } from '../../lib/supabase';
+import { ORDER_TYPE, orderTypeLabel, normalizeOrderType } from '../../data/orderTypes';
 
 function getTodayDateKey() {
   const now = new Date();
@@ -61,6 +62,9 @@ function OwnerDashboard() {
   // 預設顯示訂單管理
   const [activeTab, setActiveTab] = useState('orders');
 
+  // 訂單列表的取餐方式篩選
+  const [typeFilter, setTypeFilter] = useState('all');
+
   // 取得今天的日期
   const today = getTodayDateKey();
 
@@ -82,6 +86,11 @@ function OwnerDashboard() {
 
   // 計算今日完成訂單數
   const completedCount = completedOrders.length;
+
+  // 依照取餐方式篩選要顯示的訂單
+  const visibleOrders = orders.filter((order) =>
+    typeFilter === 'all' || normalizeOrderType(order.orderType) === typeFilter
+  );
 
   useEffect(() => {
     // 當其他分頁更新訂單時，自動重新讀取
@@ -403,17 +412,52 @@ function OwnerDashboard() {
             </button>
           </div>
 
+          <div className="owner-order-filters" role="group" aria-label="依取餐方式篩選">
+            {[
+              { id: 'all', label: '全部' },
+              { id: ORDER_TYPE.DINE_IN, label: '🍽️ 內用' },
+              { id: ORDER_TYPE.TAKEOUT, label: '🥡 外帶' },
+            ].map(filter => (
+              <button
+                key={filter.id}
+                type="button"
+                className={typeFilter === filter.id ? 'active' : ''}
+                onClick={() => setTypeFilter(filter.id)}
+              >
+                {filter.label}
+              </button>
+            ))}
+          </div>
+
           {orders.length === 0 ? (
             <p className="empty-message">
               目前沒有訂單。請先到顧客端送出一筆訂單。
             </p>
+          ) : visibleOrders.length === 0 ? (
+            <p className="empty-message">
+              目前沒有{typeFilter === ORDER_TYPE.TAKEOUT ? '外帶' : '內用'}訂單。
+            </p>
           ) : (
-            orders.map((order) => (
+            visibleOrders.map((order) => (
               <article className="order-card" key={order.orderId}>
-                <h3>{order.orderId}</h3>
+                <div className="order-card-heading">
+                  <h3>{order.orderId}</h3>
+                  <span className={`order-type-badge ${normalizeOrderType(order.orderType)}`}>
+                    {orderTypeLabel(order.orderType)}
+                  </span>
+                </div>
 
-                <p>桌號：{order.seat}</p>
-                <p>取餐時間：{order.pickupTime}</p>
+                {normalizeOrderType(order.orderType) === ORDER_TYPE.TAKEOUT ? (
+                  <p>取餐識別：<b>{order.pickupRef || '未填寫'}</b></p>
+                ) : (
+                  <p>桌號：{order.seat}</p>
+                )}
+                <div className="order-callout">
+                  #{order.orderId}{order.pickupRef ? ` · ${order.pickupRef}` : ''}
+                </div>
+                <p>
+                  {order.pickupType === 'scheduled' ? '預定取餐' : '盡快取餐'}：約 {order.pickupTime}
+                </p>
                 <p>下單時間：{order.createdAt}</p>
 
                 <div className="order-items">

@@ -24,8 +24,10 @@ export async function placeOrder(order) {
     randomToken: () => Array.from(crypto.getRandomValues(new Uint8Array(32)), b => b.toString(16).padStart(2,'0')).join(''),
   });
 }
-export async function customerOrders(seat) {
-  if (!supabase) return readLocalOrders().filter(order => order.seat === seat);
+export async function customerOrders(seat, pickupRef) {
+  if (!supabase) return readLocalOrders().filter(order =>
+    order.seat === seat && (!pickupRef || (order.pickupRef || '') === pickupRef)
+  );
   const orders = await Promise.all(readReceipts().map(({ id, receipt }) => rpc('guest_order', {
     p_id: id, p_receipt: receipt,
   }).catch(error => {

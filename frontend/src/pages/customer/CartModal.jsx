@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { ORDER_TYPE, normalizeOrderType } from '../../data/orderTypes';
+import { FIRST_SLOT_PAGE, isLowStock, isSlotSelectable } from '../../data/pickupService';
 import './css/CartModal.css';
 
 export default function CartModal({ 
@@ -7,6 +9,18 @@ export default function CartModal({
   cart, 
   menuItems, 
   seatNumber, 
+  orderType = ORDER_TYPE.DINE_IN,
+  pickupRef = '',
+  onPickupRefChange,
+  pickupType = 'ASAP',
+  onPickupTypeChange,
+  pickupTime = null,
+  onPickupTimeChange,
+  estimatedReadyAt = null,
+  availableSlots = [],
+  scheduleLoading = false,
+  scheduleError = '',
+  onRefreshSchedule,
   onIncrease, 
   onDecrease, 
   onRemoveItem, 
@@ -14,21 +28,10 @@ export default function CartModal({
   busy = false,
   error = ''
 }) {
-  // 動態生成未來 4 個取餐時間選項（每 10 分鐘一檔）
-  const generateTimeOptions = () => {
-    const options = [];
-    const now = new Date();
-    for (let i = 1; i <= 4; i++) {
-      const time = new Date(now.getTime() + i * 10 * 60000);
-      const hours = String(time.getHours()).padStart(2, '0');
-      const minutes = String(time.getMinutes()).padStart(2, '0');
-      options.push(`${hours}:${minutes}`);
-    }
-    return options;
-  };
-
-  const timeOptions = generateTimeOptions();
-  const [pickupTime, setPickupTime] = useState(timeOptions[0]); // 預設選第一個
+  const [showAllSlots, setShowAllSlots] = useState(false);
+  const isTakeout = normalizeOrderType(orderType) === ORDER_TYPE.TAKEOUT;
+  const isScheduled = pickupType === 'SCHEDULED';
+  const timeMissing = isTakeout && isScheduled && !pickupTime;
 
   if (!isOpen) return null;
 
@@ -37,9 +40,17 @@ export default function CartModal({
     return sum + (item ? item.price * qty : 0);
   }, 0);
 
+  const visibleSlots = showAllSlots ? availableSlots : availableSlots.slice(0, FIRST_SLOT_PAGE);  const hasMoreSlots = availableSlots.length > FIRST_SLOT_PAGE;
+
   const handleConfirmCheckout = () => {
-    if (busy) return;
-    onCheckout(pickupTime);
+    if (busy || timeMissing) return;
+    onCheckout({ pickupType, pickupTime, pickupRef });
+  };
+
+  const handlePickSlot = (slot) => {
+    if (!isSlotSelectable(slot)) return;
+    onPickupTypeChange?.('SCHEDULED');
+    onPickupTimeChange?.(slot.time);
   };
 
   return (
@@ -82,34 +93,126 @@ export default function CartModal({
 
         {/* 底部結帳區 */}
         <div className="cart-modal-footer">
-          
-          {/* 💡 取餐時間改用美觀的點擊按鈕群組，不再使用原生 select */}
-          <div className="checkout-setting-group">
-            <span className="setting-label">預定取餐時間：</span>
-            <div className="pickup-time-chips">
-              {timeOptions.map(time => (
-                <button
-                  type="button"
-                  key={time}
-                  disabled={busy}
-                  className={`pickup-time-chip ${pickupTime === time ? 'active' : ''}`}
-                  onClick={() => setPickupTime(time)}
-                >
-                  {time}
-                </button>
-              ))}
-            </div>
+          {/* 取餐方式摘要 */}
+          <div className={`checkout-mode-summary ${isTakeout ? 'takeout' : 'dine-in'}`}>
+            <span className="checkout-mode-badge">{isTakeout ? '🥡 外帶' : '🍽️ 內用'}</span>
+            <span className="checkout-mode-detail">
+              {isTakeout ? '餐點完成後到櫃台取餐' : `內用桌號 ${seatNumber}`}
+            </span>
           </div>
 
+          {/* 外帶才顯示：取餐識別 */}
+          {isTakeout && (
+            <section className="checkout-block">
+              <div className="checkout-block-heading">
+                <h4>取餐識別</h4>
+                <span>選填</span>
+              </div>
+              <input
+                type="text"
+                className="checkout-ref-input"
+                value={pickupRef}
+                maxLength={20}
+                placeholder="可填稱呼或手機末三碼"
+                disabled={busy}
+                onChange={(event) => onPickupRefChange?.(event.target.value)}
+              />
+              <small className="checkout-block-hint">方便叫號時識別，不填也能送出</small>
+            </section>
+          )}
+
+          {/* 外帶才顯示：預定取餐時間 */}
+          {isTakeout && (
+            <section className="checkout-block">
+              <div className="checkout-block-heading">
+                <h4>預定取餐時間</h4>
+                <button
+                  type="button"
+                  className="schedule-refresh-btn"
+                  disabled={busy || scheduleLoading}
+                  onClick={onRefreshSchedule}
+                >
+                  {scheduleLoading ? '更新中…' : '重新整理'}
+                </button>
+              </div>
+
+              {scheduleError && <p className="checkout-schedule-error" role="alert">{scheduleError}</p>}
+
+              <button
+                type="button"
+                className={`asap-option ${!isScheduled ? 'active' : ''}`}
+                disabled={busy}
+                onClick={() => onPickupTypeChange?.('ASAP')}
+                aria-pressed={!isScheduled}
+              >
+                <span className="asap-label">盡快取餐</span>
+                <span className="asap-estimate">
+                  {estimatedReadyAt ? `約 ${estimatedReadyAt}` : '計算中…'}
+                </span>
+              </button>
+
+              <div className={`pickup-slot-grid ${showAllSlots ? 'expanded' : ''}`}>
+                {visibleSlots.map(slot => {
+                  const disabled = !isSlotSelectable(slot);
+                  const active = isScheduled && pickupTime === slot.time;
+                  return (
+                    <button
+                      type="button"
+                      key={slot.time}
+                      className={`pickup-slot-btn ${active ? 'active' : ''} ${disabled ? 'soldout' : ''}`}
+                      disabled={busy || disabled}
+                      onClick={() => handlePickSlot(slot)}
+                      aria-pressed={active}
+                    >
+                      <span className="pickup-slot-time">約 {slot.time}</span>
+                      {disabled ? (
+                        <small>已滿</small>
+                      ) : isLowStock(slot) ? (
+                        <small className="low-stock">剩少量</small>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {!scheduleLoading && availableSlots.length === 0 && (
+                <p className="checkout-schedule-empty">目前沒有可選時段，請重新整理。</p>
+              )}
+
+              {hasMoreSlots && (
+                <button
+                  type="button"
+                  className="pickup-more-btn"
+                  disabled={busy}
+                  onClick={() => setShowAllSlots(current => !current)}
+                >
+                  {showAllSlots ? '收合時段' : '選擇其他時間'}
+                </button>
+              )}
+            </section>
+          )}
+
           <div className="cart-modal-total">
-            <span>桌號：<b>{seatNumber}</b></span>
+            {isTakeout
+              ? (
+                <span>
+                  取餐識別：<b>{pickupRef.trim() || '未填'}</b>
+                </span>
+              )
+              : <span>桌號：<b>{seatNumber}</b></span>}
             <span className="cart-modal-total-price">總金額：${totalPrice}</span>
           </div>
 
-          {error && <p role="alert" style={{ color: '#b91c1c' }}>{error}</p>}
-          <button className="cart-submit-btn" disabled={busy} onClick={handleConfirmCheckout}>
-            {busy ? '送出中…' : '確認送出訂單'}
-          </button>
+          <div className="cart-checkout-sticky">
+            {error && <p role="alert" className="cart-modal-error">{error}</p>}
+            <button
+              className="cart-submit-btn"
+              disabled={busy || timeMissing}
+              onClick={handleConfirmCheckout}
+            >
+              {busy ? '送出中…' : timeMissing ? '請選擇取餐時間' : '確認送出訂單'}
+            </button>
+          </div>
         </div>
 
       </div>

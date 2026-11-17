@@ -16,10 +16,59 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   padding: 14px 20px;
   background-color: #ffffff;
   border-bottom: 1px solid #e2e8f0;
   flex-shrink: 0;
+}
+
+.menu-header-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.menu-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.menu-back-btn {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 50%;
+  background-color: #ffffff;
+  color: #475569;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.menu-back-btn:hover {
+  background-color: #f1f5f9;
+}
+
+.menu-mode-tag {
+  font-size: 12px;
+  font-weight: bold;
+  padding: 4px 10px;
+  border-radius: 20px;
+}
+
+.menu-mode-tag.dine-in {
+  background-color: #ffedd5;
+  color: #c2410c;
+}
+
+.menu-mode-tag.takeout {
+  background-color: #dbeafe;
+  color: #1d4ed8;
 }
 
 .menu-title-text {
@@ -89,6 +138,60 @@
   background-color: #ea580c;
   color: #ffffff;
   border-color: #ea580c;
+}
+
+.menu-tab-chip.active {
+  background-color: #ea580c;
+  color: #ffffff;
+  border-color: #ea580c;
+}
+
+/* 搜尋列 */
+.menu-search-row {
+  position: relative;
+  padding: 10px 16px 0;
+  background-color: #ffffff;
+  flex-shrink: 0;
+}
+
+.menu-search-input {
+  width: 100%;
+  padding: 10px 34px 10px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  background-color: #f8fafc;
+  font-size: 13px;
+  color: #1e293b;
+  box-sizing: border-box;
+  outline: none;
+}
+
+.menu-search-input:focus {
+  border-color: #ea580c;
+  background-color: #ffffff;
+  box-shadow: 0 0 0 3px rgba(234, 88, 12, 0.1);
+}
+
+.menu-search-clear {
+  position: absolute;
+  top: 50%;
+  right: 26px;
+  transform: translateY(-30%);
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 50%;
+  background-color: #e2e8f0;
+  color: #475569;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.menu-empty-message {
+  padding: 40px 16px;
+  text-align: center;
+  color: #64748b;
+  font-size: 14px;
 }
 
 /* ==========================================================
@@ -291,4 +394,206 @@
   border-radius: 10px;
   cursor: pointer;
   box-shadow: 0 4px 10px rgba(234, 88, 12, 0.25);
+}
+
+/* ==========================================================
+   6. 訂單記錄面板
+   ========================================================== */
+.order-status-list {
+  gap: 12px;
+}
+
+.order-status-empty {
+  padding: 20px 0;
+  text-align: center;
+  color: #64748b;
+}
+
+.order-status-error {
+  margin: 0;
+  color: #b91c1c;
+}
+
+.order-status-card {
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background-color: #f8fafc;
+}
+
+.order-status-meta {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.order-status-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.order-status-type {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: bold;
+}
+
+.order-status-type.dine-in {
+  background-color: #ffedd5;
+  color: #c2410c;
+}
+
+.order-status-type.takeout {
+  background-color: #dbeafe;
+  color: #1d4ed8;
+}
+
+.order-status-where {
+  font-size: 12px;
+  color: #475569;
+}
+
+.order-status-state {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.state-pending { color: #d97706; font-weight: bold; }
+.state-accepted { color: #2563eb; font-weight: bold; }
+.state-completed { color: #16a34a; font-weight: bold; }
+.state-rejected { color: #dc2626; font-weight: bold; }
+
+.order-status-pickup {
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: #475569;
+}
+
+.order-status-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 6px;
+  border-top: 1px dashed #cbd5e1;
+}
+
+.order-status-item {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.order-status-total {
+  margin-top: 6px;
+  font-size: 14px;
+  font-weight: bold;
+  color: #ea580c;
+  text-align: right;
+}
+
+/* ==========================================================
+   7. 送出成功畫面
+   ========================================================== */
+.cart-modal-content.order-success {
+  padding: 24px 20px 20px;
+  align-items: center;
+  text-align: center;
+  gap: 4px;
+}
+
+.order-success-icon {
+  font-size: 40px;
+  line-height: 1;
+}
+
+.order-success h3 {
+  margin: 6px 0 0;
+  font-size: 19px;
+  color: #1e293b;
+}
+
+.order-success-sub {
+  margin: 4px 0 16px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.order-success-list {
+  width: 100%;
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  background-color: #f8fafc;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-sizing: border-box;
+}
+
+.order-success-list div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.order-success-list dt {
+  color: #64748b;
+}
+
+.order-success-list dd {
+  margin: 0;
+  font-weight: bold;
+  color: #1e293b;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.order-success-list dd.order-success-price {
+  color: #ea580c;
+}
+
+.order-success-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.order-success-secondary {
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background-color: #ffffff;
+  color: #475569;
+  font: inherit;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.order-success-secondary:hover {
+  background-color: #f1f5f9;
+}
+
+/* 叫號顯示 */
+.order-callout {
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border: 1px dashed #fdba74;
+  border-radius: 8px;
+  background-color: #fff7ed;
+  color: #9a3412;
+  font-size: 13px;
+  font-weight: bold;
+  overflow-wrap: anywhere;
 }

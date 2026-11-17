@@ -34,3 +34,22 @@
 ```bash
 git clone [https://github.com/你的帳號名稱/Breakfast_System.git](https://github.com/你的帳號名稱/Breakfast_System.git)
 cd Breakfast_System/frontend
+```
+
+---
+
+## 📱 顧客端點餐流程
+
+1. 掃描 QR Code 進入 `/customer?seat=A-01`。
+2. 在首頁選擇 **內用** 或 **外帶**：
+   - 內用：直接沿用 QR Code 帶入的桌號。
+   - 外帶：需填寫取餐人姓名，餐點完成時依姓名叫號。
+3. 進入菜單可搜尋餐點、依分類快速跳轉；購物車會依「取餐方式 + 桌號」暫存在瀏覽器。
+4. 購物車確認取餐時間後送出，成功畫面可直接查看訂單狀態。
+5. 老闆端訂單列表會標示內用／外帶，並可依取餐方式篩選。
+
+### 資料庫更新（既有專案）
+
+若使用 Supabase，且先前已執行過舊版 `supabase/schema.sql`，請再執行一次
+`supabase/migrations/20261117_add_order_type.sql`，以新增 `order_type`、
+`customer_name` 欄位與對應的 RPC。全新安裝則直接執行 `supabase/schema.sql` 即可。

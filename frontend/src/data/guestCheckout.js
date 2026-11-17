@@ -1,8 +1,13 @@
+import { ORDER_TYPE } from './orderTypes.js';
+
 export const receiptKey = 'breakfast_guest_receipts_v1';
 const pendingKey = 'breakfast_pending_checkout_v1';
 
 function fingerprint(order) {
-  return JSON.stringify([order.seat, order.pickupTime, order.items]);
+  return JSON.stringify([
+    order.orderType, order.seat, order.pickupType, order.pickupRef,
+    order.pickupTime, order.items,
+  ]);
 }
 
 // Dependencies are explicit so receipt persistence and uncertain network failures
@@ -21,7 +26,11 @@ export async function submitGuestOrder({ order, storage, call, randomId, randomT
   try {
     data = await call('submit_guest_order', {
       p_id: pending.order.orderId, p_receipt: pending.receipt,
-      p_seat: pending.order.seat, p_pickup: pending.order.pickupTime, p_items: pending.order.items,
+      p_type: pending.order.orderType || ORDER_TYPE.DINE_IN,
+      p_seat: pending.order.seat, p_pickup: pending.order.pickupTime,
+      p_name: null, p_items: pending.order.items,
+      p_mode: pending.order.pickupType === 'scheduled' ? 'scheduled' : 'asap',
+      p_ref: pending.order.pickupRef || null,
     });
   } catch (error) {
     // These database errors definitively roll back the call. Network/API errors

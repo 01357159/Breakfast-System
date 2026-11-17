@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from './authContext';
 
-export default function AuthControls({ owner = false }) {
+export default function AuthControls({ owner = false, compact = false }) {
   const auth = useAuth();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -11,10 +11,14 @@ export default function AuthControls({ owner = false }) {
     catch (err) { setError(err.message); }
     finally { setBusy(false); }
   }
-  return <div className="review-auth">
-    {auth.user && <span>已登入：{auth.user.user_metadata?.full_name || auth.user.email}</span>}
+  const displayName = auth.user?.user_metadata?.full_name || auth.user?.email || '會員';
+  return <div className={compact ? 'review-auth compact' : 'review-auth'}>
+    {!compact && auth.user && <span>已登入：{displayName}</span>}
     <button type="button" disabled={!auth.configured || auth.loading || busy} onClick={act}>
-      {auth.loading ? '確認登入中…' : auth.user ? '登出' : owner ? '使用 Google 登入店家後台' : '使用 Google 登入以撰寫評論'}
+      {auth.loading ? '確認登入中…'
+        : auth.user ? (compact ? `👤 ${displayName}・登出` : '登出')
+        : compact ? '👤 會員登入'
+        : owner ? '使用 Google 登入店家後台' : '使用 Google 登入以撰寫評論'}
     </button>
     {(error || auth.error) && <p role="alert">{error || auth.error}</p>}
   </div>;

@@ -173,6 +173,10 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  /* 外帶結帳內容較長時，讓結帳區自己捲動，送出按鈕保持可見。 */
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .cart-modal-total {
@@ -202,6 +206,17 @@
   box-shadow: 0 4px 12px rgba(234, 88, 12, 0.3);
 }
 
+/* 錯誤訊息與送出按鈕固定在結帳區底部，捲動查看時段時仍看得見。 */
+.cart-checkout-sticky {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  background-color: #f8fafc;
+}
+
 @keyframes slideUp {
   from { transform: translateY(100%); }
   to { transform: translateY(0); }
@@ -210,4 +225,241 @@
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
+}
+/* ==========================================================
+   內用 / 外帶 取餐方式摘要
+   ========================================================== */
+.checkout-mode-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+}
+
+.checkout-mode-summary.dine-in {
+  background-color: #fff7ed;
+  border: 1px solid #ffedd5;
+}
+
+.checkout-mode-summary.takeout {
+  background-color: #eff6ff;
+  border: 1px solid #dbeafe;
+}
+
+.checkout-mode-badge {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: bold;
+}
+
+.checkout-mode-summary.dine-in .checkout-mode-badge { color: #c2410c; }
+.checkout-mode-summary.takeout .checkout-mode-badge { color: #1d4ed8; }
+
+.checkout-mode-detail {
+  color: #475569;
+}
+
+/* ==========================================================
+   外帶結帳：取餐識別 + 預定取餐時間
+   ========================================================== */
+.checkout-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background-color: #ffffff;
+}
+
+.checkout-block-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.checkout-block-heading h4 {
+  margin: 0;
+  font-size: 13px;
+  color: #1e293b;
+}
+
+.checkout-block-heading > span {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.checkout-ref-input {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  font-size: 15px;
+  color: #1e293b;
+  box-sizing: border-box;
+  outline: none;
+}
+
+.checkout-ref-input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.checkout-block-hint {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.schedule-refresh-btn {
+  padding: 4px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background-color: #ffffff;
+  color: #64748b;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.schedule-refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.checkout-schedule-error {
+  margin: 0;
+  font-size: 12px;
+  color: #b91c1c;
+}
+
+.checkout-schedule-empty {
+  margin: 0;
+  font-size: 12px;
+  color: #64748b;
+  text-align: center;
+}
+
+/* 盡快取餐 */
+.asap-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 48px;
+  padding: 10px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background-color: #f8fafc;
+  color: #1e293b;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.asap-option.active {
+  border-color: #ea580c;
+  background-color: #fff7ed;
+  box-shadow: 0 1px 3px rgba(234, 88, 12, 0.15);
+}
+
+.asap-label {
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.asap-estimate {
+  font-size: 13px;
+  font-weight: bold;
+  color: #ea580c;
+}
+
+/* 可選時段 */
+.pickup-slot-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+/* 展開更多時段時限制高度，避免送出按鈕被推出彈窗外。 */
+.pickup-slot-grid.expanded {
+  max-height: 228px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
+}
+
+.pickup-slot-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 48px;
+  padding: 8px 4px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background-color: #ffffff;
+  color: #334155;
+  font: inherit;
+  cursor: pointer;
+}
+
+.pickup-slot-btn.active {
+  border-color: #ea580c;
+  background-color: #fff7ed;
+  color: #c2410c;
+  font-weight: bold;
+}
+
+.pickup-slot-btn.soldout {
+  border-color: #e2e8f0;
+  background-color: #f1f5f9;
+  color: #94a3b8;
+  text-decoration: line-through;
+  cursor: not-allowed;
+}
+
+.pickup-slot-time {
+  font-size: 13px;
+}
+
+.pickup-slot-btn small {
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+.pickup-slot-btn small.low-stock {
+  color: #d97706;
+  font-weight: bold;
+}
+
+.pickup-more-btn {
+  align-self: center;
+  padding: 8px 14px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 999px;
+  background-color: #ffffff;
+  color: #475569;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pickup-more-btn:hover {
+  border-color: #ea580c;
+  color: #ea580c;
+}
+
+.cart-modal-error {
+  margin: 0;
+  font-size: 12px;
+  color: #b91c1c;
+}
+
+.cart-submit-btn:disabled {
+  background: #cbd5e1;
+  box-shadow: none;
+  cursor: not-allowed;
 }

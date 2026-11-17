@@ -33,6 +33,22 @@ test('lost responses reuse the receipt and preserve a different current cart', a
   assert.equal(result.recoveredPrevious,true);
   assert.equal(requests,2);
 });
+test('takeout orders send the order type, pickup mode and reference', async () => {
+  const storage = memoryStorage();
+  let submitted;
+  const takeout = {
+    orderType:'takeout', seat:'外帶', pickupType:'scheduled', pickupRef:'王小明',
+    pickupTime:'10:30', items:order.items,
+  };
+  const result = await submitGuestOrder({ storage, order: takeout, randomId: () => 'order-2', randomToken: () => 'receipt',
+    call: async (_name,args) => { submitted=args; return { orderId:args.p_id }; },
+  });
+  assert.equal(submitted.p_type,'takeout');
+  assert.equal(submitted.p_mode,'scheduled');
+  assert.equal(submitted.p_ref,'王小明');
+  assert.equal(submitted.p_seat,'外帶');
+  assert.equal(result.recoveredPrevious,false);
+});
 test('storage failure stops submission before network activity', async () => {
   let called = false;
   const storage = {getItem:()=>null,setItem:()=>{throw new Error('quota exceeded');}};

@@ -3,24 +3,67 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getMenu, MENU_CATEGORIES } from '../../data/menuData';
 import CartModal from './CartModal';
 import { customerOrders, placeOrder } from '../../data/orderService';
+import { fetchPickupSchedule } from '../../data/pickupService';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../auth/authContext';
+import { ORDER_TYPE, TAKEOUT_SEAT, normalizeOrderType, orderTypeLabel } from '../../data/orderTypes';
 import './css/Menu.css';
+
+const cartStorageKey = (orderType, seat) => `breakfast_cart_v1:${orderType}:${seat}`;
+
+function loadCart(key) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) || '{}');
+    return saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : {};
+  } catch {
+    return {};
+  }
+}
+
+// 會員手機末三碼可作為取餐識別預填值。
+function memberRefSuffix(user) {
+  const phone = user?.phone || user?.user_metadata?.phone || '';
+  return String(phone).replace(/\D/g, '').slice(-3);
+}
 
 export default function Menu() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const seatNumber = searchParams.get('seat') || "A-01";
+  const auth = useAuth();
+
+  const orderType = normalizeOrderType(searchParams.get('type'));
+  const isTakeout = orderType === ORDER_TYPE.TAKEOUT;
+  const seatParam = searchParams.get('seat') || 'A-01';
+  const seatNumber = isTakeout ? TAKEOUT_SEAT : seatParam;
 
   const [menuItems, setMenuItems] = useState([]);
-  const [cart, setCart] = useState({});
+  const [searchText, setSearchText] = useState('');
+  const [activeCategory, setActiveCategory] = useState(MENU_CATEGORIES[0]?.id || '');
+  const storageKey = cartStorageKey(orderType, seatNumber);
+  const [cart, setCart] = useState(() => loadCart(storageKey));
   const [isCartOpen, setIsCartOpen] = useState(false);
-  
+
+  // 外帶取餐狀態
+  const [pickupRef, setPickupRef] = useState(searchParams.get('ref') || '');
+  const [pickupRefDirty, setPickupRefDirty] = useState(false);
+  const [pickupType, setPickupType] = useState('ASAP');
+  const [pickupTime, setPickupTime] = useState(null);
+  const [estimatedReadyAt, setEstimatedReadyAt] = useState(null);
+  const [availableSlots, setAvailableSlots] = useState([]);
+  const [scheduleLoading, setScheduleLoading] = useState(true);
+  const [scheduleError, setScheduleError] = useState('');
+
   const [isStatusOpen, setIsStatusOpen] = useState(false);
   const [myOrders, setMyOrders] = useState([]);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [orderError, setOrderError] = useState('');
+  const [placedOrder, setPlacedOrder] = useState(null);
 
   const categoryRefs = useRef({});
+  const scrollRef = useRef(null);
+
+  const memberRef = memberRefSuffix(auth.user);
+  const effectivePickupRef = pickupRefDirty ? pickupRef : (pickupRef || memberRef);
 
   useEffect(() => {
     // 頁面開啟時先讀取最新菜單
@@ -50,11 +93,67 @@ export default function Menu() {
     };
   }, []);
 
+  // 載入後端提供的取餐排程（含 ASAP 預估時間與各時段名額）。
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const schedule = await fetchPickupSchedule();
+        if (!alive) return;
+        setAvailableSlots(schedule.slots);
+        setEstimatedReadyAt(schedule.estimatedReadyAt);
+        setScheduleError('');
+      } catch (error) {
+        if (alive) setScheduleError(error.message);
+      } finally {
+        if (alive) setScheduleLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  // 購物車依「取餐方式 + 桌號」分開保存，重新整理或誤觸上一頁都不會遺失。
+  useEffect(() => {
+    try { localStorage.setItem(storageKey, JSON.stringify(cart)); }
+    catch { /* 儲存空間不足時仍可正常點餐，只是不會保留購物車 */ }
+  }, [storageKey, cart]);
+
+  const refreshSchedule = async () => {
+    setScheduleLoading(true);
+    try {
+      const schedule = await fetchPickupSchedule();
+      setAvailableSlots(schedule.slots || []);
+      setEstimatedReadyAt(schedule.estimatedReadyAt || null);
+      setScheduleError('');
+      return schedule;
+    } catch (error) {
+      setScheduleError(error.message);
+      return null;
+    } finally {
+      setScheduleLoading(false);
+    }
+  };
+
   const handleScrollToCategory = (catId) => {
     const element = categoryRefs.current[catId];
     if (element) {
       element.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
+    setActiveCategory(catId);
+  };
+
+  const handleMenuScroll = () => {
+    const container = scrollRef.current;
+    if (!container) return;
+    const containerTop = container.getBoundingClientRect().top;
+    let current = MENU_CATEGORIES[0]?.id || '';
+    for (const cat of MENU_CATEGORIES) {
+      const element = categoryRefs.current[cat.id];
+      if (element && element.getBoundingClientRect().top - containerTop <= 80) {
+        current = cat.id;
+      }
+    }
+    setActiveCategory(current);
   };
 
   const handleIncrease = (itemId) => {
@@ -87,16 +186,46 @@ export default function Menu() {
     });
   };
 
-  const totalCount = Object.values(cart).reduce((a, b) => a + b, 0);
-  const totalPrice = Object.entries(cart).reduce((sum, [id, qty]) => {
+  const handlePickupTypeChange = (nextType) => {
+    setPickupType(nextType);
+    if (nextType === 'ASAP') setPickupTime(null);
+  };
+
+  const handlePickupTimeChange = (time) => {
+    setPickupTime(time);
+    setPickupType('SCHEDULED');
+  };
+
+  const handlePickupRefChange = (value) => {
+    setPickupRef(value);
+    setPickupRefDirty(true);
+  };
+
+  // 忽略購物車中已被店家移除的餐點，避免金額計算出現幽靈品項。
+  const cartEntries = Object.entries(cart).filter(([id]) =>
+    menuItems.some(item => item.id === Number(id))
+  );
+  const totalCount = cartEntries.reduce((sum, [, qty]) => sum + qty, 0);
+  const totalPrice = cartEntries.reduce((sum, [id, qty]) => {
     const item = menuItems.find(i => i.id === Number(id));
     return sum + (item ? item.price * qty : 0);
   }, 0);
 
+  const query = searchText.trim().toLowerCase();
+  const filteredItems = menuItems.filter(item => item.available !== false && (
+    !query ||
+    item.name.toLowerCase().includes(query) ||
+    (item.description || '').toLowerCase().includes(query)
+  ));
+
+  const refreshOrders = async () => {
+    setMyOrders(await customerOrders(seatNumber, isTakeout ? effectivePickupRef.trim() : undefined));
+  };
+
   const handleOpenStatus = async () => {
     setIsStatusOpen(true);
     setOrderError('');
-    try { setMyOrders(await customerOrders(seatNumber)); }
+    try { await refreshOrders(); }
     catch (error) { setOrderError(error.message); }
   };
 
@@ -108,22 +237,49 @@ export default function Menu() {
       if (running || document.hidden) return;
       running = true;
       try {
-        const next = await customerOrders(seatNumber);
+        const next = await customerOrders(seatNumber, isTakeout ? effectivePickupRef.trim() : undefined);
         if (alive) { setMyOrders(next); setOrderError(''); }
       } catch (error) { if (alive) setOrderError(error.message); }
       finally { running = false; }
-    },5000);
+    }, 5000);
     return () => { alive = false; clearInterval(timer); };
-  }, [isStatusOpen, seatNumber]);
+  }, [isStatusOpen, seatNumber, isTakeout, effectivePickupRef]);
 
-  // 結帳（僅保留取餐時間與基本資訊）
-  const handleCheckout = async (pickupTime) => {
+  const handleBackHome = () => {
+    const params = new URLSearchParams({ seat: seatParam, type: orderType });
+    navigate(`/customer?${params.toString()}`);
+  };
+
+  // 結帳：送出前重新向後端確認時段仍有效，再建立訂單。
+  const handleCheckout = async ({ pickupType: selectedType } = {}) => {
     if (totalCount === 0 || checkoutBusy) return;
     setCheckoutBusy(true);
     setOrderError('');
     try {
 
-    const orderItems = Object.entries(cart).map(([id, qty]) => {
+    let schedule;
+    try {
+      schedule = await fetchPickupSchedule();
+    } catch (error) {
+      setOrderError(`無法確認取餐時段：${error.message}。請稍後再試。`);
+      return;
+    }
+    setAvailableSlots(schedule.slots || []);
+    setEstimatedReadyAt(schedule.estimatedReadyAt || null);
+
+    const scheduled = isTakeout && selectedType === 'SCHEDULED';
+    let finalPickupTime = schedule.estimatedReadyAt;
+    if (scheduled) {
+      const slot = (schedule.slots || []).find(item => item.time === pickupTime);
+      if (!slot || slot.remaining <= 0) {
+        setOrderError('該時段已滿，請改選');
+        setPickupTime(null);
+        return;
+      }
+      finalPickupTime = slot.time;
+    }
+
+    const orderItems = cartEntries.map(([id, qty]) => {
       const item = menuItems.find(i => i.id === Number(id));
       return {
         id: item.id,
@@ -136,7 +292,12 @@ export default function Menu() {
 
     const newOrder = {
       orderId: 'ORD-' + Date.now().toString().slice(-6),
+      orderType,
       seat: seatNumber,
+      pickupType: scheduled ? 'scheduled' : 'asap',
+      pickupRef: isTakeout ? effectivePickupRef.trim() : '',
+      pickupTime: finalPickupTime,
+      estimatedReadyAt: schedule.estimatedReadyAt,
       createdDate: (() => {        // 記錄顧客下單的日期
         const now = new Date();
         const year = now.getFullYear();
@@ -146,24 +307,34 @@ export default function Menu() {
       })(),
       items: orderItems,
       totalPrice: totalPrice,
-      pickupTime: pickupTime,
       status: 'pending', // pending / accepted / completed / rejected
       queueNumber: null,
-      createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
     };
 
     const submitted = await placeOrder(newOrder);
 
     if (submitted.recoveredPrevious) {
-      alert(`已確認前次訂單！\n桌號：${submitted.seat}\n預定取餐：${submitted.pickupTime}\n總金額：$${submitted.totalPrice}\n目前購物車尚未送出，請再次確認送出。`);
+      alert(`已確認前次訂單！\n取餐方式：${orderTypeLabel(submitted.orderType)}\n${submitted.pickupRef ? `取餐識別：${submitted.pickupRef}\n` : ''}預定取餐：約 ${submitted.pickupTime}\n總金額：$${submitted.totalPrice}\n目前購物車尚未送出，請再次確認送出。`);
       return;
     }
 
-    alert(`🎉 訂單已送出！\n桌號：${submitted.seat}\n預定取餐：${submitted.pickupTime}\n總金額：$${submitted.totalPrice}`);
-    
     setCart({});
     setIsCartOpen(false);
-    } catch (error) { setOrderError(`送出失敗：${error.message}。請重試，重試會安全地確認前次訂單。`); }
+    setPlacedOrder(submitted);
+    } catch (error) {
+      if (error.message.includes('該時段已滿')) {
+        setPickupTime(null);
+        setOrderError('該時段已滿，請改選');
+        try {
+          const latest = await fetchPickupSchedule();
+          setAvailableSlots(latest.slots || []);
+          setEstimatedReadyAt(latest.estimatedReadyAt || null);
+        } catch { /* 保留原始錯誤訊息，讓顧客可手動重新整理 */ }
+      } else {
+        setOrderError(`送出失敗：${error.message}。請重試，重試會安全地確認前次訂單。`);
+      }
+    }
     finally { setCheckoutBusy(false); }
   };
 
@@ -172,22 +343,44 @@ export default function Menu() {
       
       {/* 1. 頂部導覽列 */}
       <div className="menu-header">
-        <span className="menu-title-text">線上點餐系統</span>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <button className="menu-status-check-btn" onClick={() => navigate(`/customer/reviews?seat=${encodeURIComponent(seatNumber)}`)}>★ 評價</button>
-          <span className="menu-seat-tag">桌號：{seatNumber}</span>
+        <div className="menu-header-main">
+          <button className="menu-back-btn" onClick={handleBackHome} title="回到首頁">←</button>
+          <span className="menu-title-text">線上點餐系統</span>
+        </div>
+        <div className="menu-header-actions">
+          <span className={`menu-mode-tag ${isTakeout ? 'takeout' : 'dine-in'}`}>
+            {isTakeout ? '🥡 外帶' : '🍽️ 內用'}
+          </span>
+          <span className="menu-seat-tag">
+            {isTakeout ? (effectivePickupRef.trim() || '外帶') : `桌號：${seatNumber}`}
+          </span>
+          <button className="menu-status-check-btn" onClick={() => navigate(`/customer/reviews?seat=${encodeURIComponent(seatParam)}&type=${orderType}`)}>★ 評價</button>
           <button className="menu-status-check-btn" onClick={handleOpenStatus}>
             📋 訂單記錄
           </button>
         </div>
       </div>
 
-      {/* 2. 橫向分類標籤列 */}
+      {/* 2. 搜尋 + 橫向分類標籤列 */}
+      <div className="menu-search-row">
+        <input
+          className="menu-search-input"
+          type="search"
+          value={searchText}
+          onChange={(event) => setSearchText(event.target.value)}
+          placeholder="搜尋餐點，例如：蛋餅、奶茶"
+          aria-label="搜尋餐點"
+        />
+        {searchText && (
+          <button className="menu-search-clear" onClick={() => setSearchText('')} aria-label="清除搜尋">✕</button>
+        )}
+      </div>
+
       <div className="menu-tabs-horizontal">
         {MENU_CATEGORIES.map(cat => (
           <button
             key={cat.id}
-            className="menu-tab-chip"
+            className={`menu-tab-chip ${!query && activeCategory === cat.id ? 'active' : ''}`}
             onClick={() => handleScrollToCategory(cat.id)}
           >
             {cat.name}
@@ -196,51 +389,59 @@ export default function Menu() {
       </div>
 
       {/* 3. 菜單列表區 */}
-      <div className="menu-scroll-area">
-        {MENU_CATEGORIES.map(cat => {
-          const itemsInCat = menuItems.filter(item => item.category === cat.id && item.available !== false);
-          if (itemsInCat.length === 0) return null;
+      <div className="menu-scroll-area" ref={scrollRef} onScroll={handleMenuScroll}>
+        {menuItems.length === 0 ? (
+          <p className="menu-empty-message">菜單載入中…</p>
+        ) : filteredItems.length === 0 ? (
+          <p className="menu-empty-message">
+            找不到「{searchText.trim()}」相關餐點，換個關鍵字試試。
+          </p>
+        ) : (
+          MENU_CATEGORIES.map(cat => {
+            const itemsInCat = filteredItems.filter(item => item.category === cat.id);
+            if (itemsInCat.length === 0) return null;
 
-          return (
-            <div 
-              key={cat.id} 
-              className="menu-category-section"
-              ref={el => categoryRefs.current[cat.id] = el}
-            >
-              <h3 className="menu-category-title">{cat.name}</h3>
-              
-              <div className="menu-items-grid">
-                {itemsInCat.map(item => {
-                  const qty = cart[item.id] || 0;
-                  return (
-                    <div key={item.id} className="menu-item-card">
-                      <div className="menu-item-text-group">
-                        <h4 className="menu-item-name">{item.name}</h4>
-                        <p className="menu-item-desc">{item.description || '美味推薦，現點現做'}</p>
-                        <div className="menu-item-row">
-                          <span className="menu-item-price">${item.price}</span>
-                          
-                          {qty === 0 ? (
-                            <button className="menu-plus-btn" onClick={() => handleIncrease(item.id)}>
-                              +
-                            </button>
-                          ) : (
-                            <div className="menu-counter-control">
-                              <button className="counter-btn" onClick={() => handleDecrease(item.id)}>-</button>
-                              <span className="counter-num">{qty}</span>
-                              <button className="counter-btn" onClick={() => handleIncrease(item.id)}>+</button>
-                            </div>
-                          )}
+            return (
+              <div 
+                key={cat.id} 
+                className="menu-category-section"
+                ref={el => categoryRefs.current[cat.id] = el}
+              >
+                <h3 className="menu-category-title">{cat.name}</h3>
+                
+                <div className="menu-items-grid">
+                  {itemsInCat.map(item => {
+                    const qty = cart[item.id] || 0;
+                    return (
+                      <div key={item.id} className="menu-item-card">
+                        <div className="menu-item-text-group">
+                          <h4 className="menu-item-name">{item.name}</h4>
+                          <p className="menu-item-desc">{item.description || '美味推薦，現點現做'}</p>
+                          <div className="menu-item-row">
+                            <span className="menu-item-price">${item.price}</span>
+                            
+                            {qty === 0 ? (
+                              <button className="menu-plus-btn" onClick={() => handleIncrease(item.id)} aria-label={`加入 ${item.name}`}>
+                                +
+                              </button>
+                            ) : (
+                              <div className="menu-counter-control">
+                                <button className="counter-btn" onClick={() => handleDecrease(item.id)} aria-label={`減少 ${item.name}`}>-</button>
+                                <span className="counter-num">{qty}</span>
+                                <button className="counter-btn" onClick={() => handleIncrease(item.id)} aria-label={`增加 ${item.name}`}>+</button>
+                              </div>
+                            )}
+                          </div>
                         </div>
+                        <img src={item.image} alt={item.name} className="menu-item-image" loading="lazy" />
                       </div>
-                      <img src={item.image} alt={item.name} className="menu-item-image" />
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })
+        )}
       </div>
 
       {/* 4. 底部購物車預覽列 */}
@@ -258,11 +459,24 @@ export default function Menu() {
 
       {/* 5. 購物車彈窗 */}
       <CartModal 
+        key={isCartOpen ? 'cart-open' : 'cart-closed'}
         isOpen={isCartOpen}
         onClose={() => setIsCartOpen(false)}
         cart={cart}
         menuItems={menuItems}
-        seatNumber={seatNumber}
+        seatNumber={seatParam}
+        orderType={orderType}
+        pickupRef={effectivePickupRef}
+        onPickupRefChange={handlePickupRefChange}
+        pickupType={pickupType}
+        onPickupTypeChange={handlePickupTypeChange}
+        pickupTime={pickupTime}
+        onPickupTimeChange={handlePickupTimeChange}
+        estimatedReadyAt={estimatedReadyAt}
+        availableSlots={availableSlots}
+        scheduleLoading={scheduleLoading}
+        scheduleError={scheduleError}
+        onRefreshSchedule={refreshSchedule}
         onIncrease={handleIncrease}
         onDecrease={handleDecrease}
         onRemoveItem={handleRemoveItem}
@@ -271,7 +485,44 @@ export default function Menu() {
         error={orderError}
       />
 
-      {/* 6. 精簡後的「我的訂單」狀態面板 */}
+      {/* 6. 送出成功畫面 */}
+      {placedOrder && (
+        <div className="cart-modal-overlay" onClick={() => setPlacedOrder(null)}>
+          <div className="cart-modal-content order-success" onClick={e => e.stopPropagation()}>
+            <div className="order-success-icon" aria-hidden="true">🎉</div>
+            <h3>訂單已送出！</h3>
+            <p className="order-success-sub">店家接單後即可在「訂單記錄」查看製作進度</p>
+
+            <dl className="order-success-list">
+              <div><dt>取餐方式</dt><dd>{orderTypeLabel(placedOrder.orderType)}</dd></div>
+              {normalizeOrderType(placedOrder.orderType) === ORDER_TYPE.TAKEOUT && placedOrder.pickupRef && (
+                <div><dt>取餐識別</dt><dd>{placedOrder.pickupRef}</dd></div>
+              )}
+              {normalizeOrderType(placedOrder.orderType) === ORDER_TYPE.TAKEOUT ? (
+                <div>
+                  <dt>{placedOrder.pickupType === 'scheduled' ? '預定取餐' : '盡快取餐'}</dt>
+                  <dd>約 {placedOrder.pickupTime}</dd>
+                </div>
+              ) : (
+                <div><dt>桌號</dt><dd>{placedOrder.seat}</dd></div>
+              )}
+              <div><dt>總金額</dt><dd className="order-success-price">${placedOrder.totalPrice}</dd></div>
+              <div><dt>訂單編號</dt><dd>#{placedOrder.orderId}</dd></div>
+            </dl>
+
+            <div className="order-success-actions">
+              <button className="cart-submit-btn" onClick={() => { setPlacedOrder(null); handleOpenStatus(); }}>
+                查看訂單狀態
+              </button>
+              <button className="order-success-secondary" onClick={() => setPlacedOrder(null)}>
+                繼續點餐
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 7. 訂單記錄面板 */}
       {isStatusOpen && (
         <div className="cart-modal-overlay" onClick={() => setIsStatusOpen(false)}>
           <div className="cart-modal-content" onClick={e => e.stopPropagation()}>
@@ -280,41 +531,57 @@ export default function Menu() {
               <button className="cart-close-btn" onClick={() => setIsStatusOpen(false)}>✕</button>
             </div>
 
-            <div className="cart-items-list" style={{ gap: '12px' }}>
-              {orderError && <p role="alert" style={{ color: '#b91c1c' }}>{orderError}</p>}
+            <div className="cart-items-list order-status-list">
+              {orderError && <p role="alert" className="order-status-error">{orderError}</p>}
               {myOrders.length === 0 ? (
-                <p style={{ textAlign: 'center', color: '#64748b', padding: '20px 0' }}>目前沒有訂單紀錄</p>
+                <p className="order-status-empty">目前沒有訂單紀錄</p>
               ) : (
                 myOrders.map(order => (
-                  <div key={order.orderId} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px', backgroundColor: '#f8fafc' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '12px', color: '#64748b' }}>
+                  <div key={order.orderId} className="order-status-card">
+                    <div className="order-status-meta">
                       <span>編號: {order.orderId}</span>
                       <span>{order.createdAt}</span>
                     </div>
 
+                    <div className="order-status-line">
+                      <span className={`order-status-type ${normalizeOrderType(order.orderType)}`}>
+                        {orderTypeLabel(order.orderType)}
+                      </span>
+                      <span className="order-status-where">
+                        {normalizeOrderType(order.orderType) === ORDER_TYPE.TAKEOUT
+                          ? `取餐識別：${order.pickupRef || '—'}`
+                          : `桌號：${order.seat}`}
+                      </span>
+                    </div>
+
+                    {/* 叫號顯示：有取餐識別時附在訂單號後 */}
+                    <div className="order-callout">
+                      #{order.orderId}{order.pickupRef ? ` · ${order.pickupRef}` : ''}
+                    </div>
+
                     {/* 精簡狀態顯示 */}
-                    <div style={{ marginBottom: '8px', fontSize: '14px' }}>
-                      {order.status === 'pending' && <span style={{ color: '#d97706', fontWeight: 'bold' }}>⏳ 等待接單中</span>}
-                      {order.status === 'accepted' && <span style={{ color: '#2563eb', fontWeight: 'bold' }}>🍳 製作中 {order.queueNumber && `(序號 #${order.queueNumber})`}</span>}
-                      {order.status === 'completed' && <span style={{ color: '#16a34a', fontWeight: 'bold' }}>✅ 餐點已完成請取餐</span>}
-                      {order.status === 'completed' && supabase && <button className="menu-status-check-btn" onClick={() => navigate(`/customer/reviews?seat=${encodeURIComponent(seatNumber)}`)}>★ 登入並評論這次用餐</button>}
-                      {order.status === 'rejected' && <span style={{ color: '#dc2626', fontWeight: 'bold' }}>❌ 已被婉拒</span>}
+                    <div className="order-status-state">
+                      {order.status === 'pending' && <span className="state-pending">⏳ 等待接單中</span>}
+                      {order.status === 'accepted' && <span className="state-accepted">🍳 製作中 {order.queueNumber && `(序號 #${order.queueNumber})`}</span>}
+                      {order.status === 'completed' && <span className="state-completed">✅ 餐點已完成請取餐</span>}
+                      {order.status === 'completed' && supabase && <button className="menu-status-check-btn" onClick={() => navigate(`/customer/reviews?seat=${encodeURIComponent(seatParam)}&type=${orderType}`)}>★ 登入並評論這次用餐</button>}
+                      {order.status === 'rejected' && <span className="state-rejected">❌ 已被婉拒</span>}
                     </div>
 
-                    <div style={{ fontSize: '13px', color: '#475569', marginBottom: '6px' }}>
-                      取餐時間：<b>{order.pickupTime}</b>
+                    <div className="order-status-pickup">
+                      {order.pickupType === 'scheduled' ? '預定取餐' : '盡快取餐'}：<b>約 {order.pickupTime}</b>
                     </div>
 
-                    <div style={{ borderTop: '1px dashed #cbd5e1', paddingTop: '6px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <div className="order-status-items">
                       {order.items.map((it, idx) => (
-                        <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#64748b' }}>
+                        <div key={idx} className="order-status-item">
                           <span>{it.name} x {it.qty}</span>
                           <span>${it.subtotal}</span>
                         </div>
                       ))}
                     </div>
 
-                    <div style={{ textAlign: 'right', marginTop: '6px', fontWeight: 'bold', color: '#ea580c', fontSize: '14px' }}>
+                    <div className="order-status-total">
                       總計：${order.totalPrice}
                     </div>
                   </div>

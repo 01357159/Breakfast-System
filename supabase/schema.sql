@@ -13,6 +13,9 @@ create table private.orders (
   customer_id uuid references auth.users(id),
   seat text not null,
   pickup_time text not null,
+  order_type text not null default 'dine-in' check(order_type in ('dine-in','takeout')),
+  pickup_type text not null default 'asap' check(pickup_type in ('asap','scheduled')),
+  pickup_ref text check(pickup_ref is null or length(trim(pickup_ref)) between 1 and 20),
   items jsonb not null,
   total numeric not null check(total >= 0),
   status text not null default 'pending' check(status in ('pending','accepted','completed','rejected')),
@@ -64,19 +67,70 @@ create function private.order_json(o private.orders) returns jsonb
 language sql stable set search_path = '' as $$
   select jsonb_build_object(
     'orderId',o.id,'seat',o.seat,'items',o.items,'totalPrice',o.total,
+    'orderType',o.order_type,'pickupType',o.pickup_type,'pickupRef',o.pickup_ref,
     'pickupTime',o.pickup_time,'status',o.status,
     'createdDate',to_char(o.created_at at time zone 'Asia/Taipei','YYYY-MM-DD'),
     'createdAt',to_char(o.created_at at time zone 'Asia/Taipei','HH24:MI')
   );
 $$;
-create function private.submit_guest_order(p_id uuid, p_receipt text, p_seat text, p_pickup text, p_items jsonb)
+-- 外帶取餐排程：固定 10 分鐘一檔、每檔 6 單，取餐識別與時段名額由後端提供。
+create function private.pickup_estimate() returns timestamptz
+language sql stable set search_path = '' as $$
+  select date_trunc('minute', now() + interval '15 min')
+    + make_interval(mins => (5 - extract(minute from now() + interval '15 min')::integer % 5) % 5);
+$$;
+create function private.pickup_schedule() returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+declare
+  now_local timestamp := now() at time zone 'Asia/Taipei';
+  estimate timestamptz := private.pickup_estimate();
+  first_slot timestamp;
+  slot_at timestamp;
+  used integer;
+  slots jsonb := '[]';
+  capacity constant integer := 6;
+begin
+  first_slot := date_trunc('minute', now_local + interval '30 min');
+  first_slot := first_slot + make_interval(
+    mins => (10 - extract(minute from first_slot)::integer % 10) % 10
+  );
+  for i in 0..23 loop
+    slot_at := first_slot + make_interval(mins => i * 10);
+    exit when slot_at::date <> now_local::date;
+    select count(*) into used from private.orders o
+      where o.pickup_type = 'scheduled'
+        and o.pickup_time = to_char(slot_at, 'HH24:MI')
+        and (o.created_at at time zone 'Asia/Taipei')::date = slot_at::date
+        and o.status <> 'rejected';
+    slots := slots || jsonb_build_array(jsonb_build_object(
+      'time', to_char(slot_at, 'HH24:MI'),
+      'remaining', greatest(capacity - used, 0)
+    ));
+  end loop;
+  return jsonb_build_object(
+    'estimatedReadyAt', to_char(estimate at time zone 'Asia/Taipei', 'HH24:MI'),
+    'slots', slots
+  );
+end;
+$$;
+create function private.submit_guest_order(
+  p_id uuid, p_receipt text, p_seat text, p_pickup text, p_items jsonb,
+  p_type text default 'dine-in', p_name text default null,
+  p_mode text default 'asap', p_ref text default null
+)
 returns jsonb language plpgsql security definer set search_path = '' as $$
-declare o private.orders; item jsonb; total numeric := 0; normalized jsonb := '[]';
+declare
+  o private.orders; item jsonb; total numeric := 0; normalized jsonb := '[]';
+  pickup_mode text := coalesce(p_mode, 'asap');
+  slot_at timestamp; used integer; capacity constant integer := 6;
 begin
   if p_id is null or p_receipt is null or p_receipt !~ '^[a-f0-9]{64}$'
     or p_seat is null or length(trim(p_seat)) not between 1 and 30
     or p_pickup is null or p_pickup !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
     or p_items is null or jsonb_typeof(p_items) <> 'array'
+    or p_type is null or p_type not in ('dine-in','takeout')
+    or pickup_mode not in ('asap','scheduled')
+    or (p_ref is not null and length(trim(p_ref)) > 20)
   then raise exception '訂單資料無效'; end if;
   if jsonb_array_length(p_items) not between 1 and 100 then raise exception '請選擇餐點'; end if;
   for item in select * from jsonb_array_elements(p_items) loop
@@ -93,8 +147,31 @@ begin
       'qty',(item->>'qty')::integer,'subtotal',(item->>'price')::numeric * (item->>'qty')::numeric
     ));
   end loop;
-  insert into private.orders(id,receipt_hash,seat,pickup_time,items,total)
-    values(p_id,encode(sha256(convert_to(p_receipt,'UTF8')),'hex'),trim(p_seat),p_pickup,normalized,total)
+  -- 重試同一個收據時直接回傳既有訂單，避免重複佔用時段名額。
+  select * into o from private.orders where id = p_id
+    and receipt_hash = encode(sha256(convert_to(p_receipt,'UTF8')),'hex');
+  if found then return private.order_json(o); end if;
+  if pickup_mode = 'scheduled' then
+    slot_at := (now() at time zone 'Asia/Taipei')::date + p_pickup::time;
+    if slot_at <= (now() at time zone 'Asia/Taipei') then
+      raise exception '該時段已滿，請改選';
+    end if;
+    select count(*) into used from private.orders ord
+      where ord.pickup_type = 'scheduled'
+        and ord.pickup_time = p_pickup
+        and (ord.created_at at time zone 'Asia/Taipei')::date = slot_at::date
+        and ord.status <> 'rejected';
+    if used >= capacity then raise exception '該時段已滿，請改選'; end if;
+  else
+    p_pickup := to_char(private.pickup_estimate() at time zone 'Asia/Taipei','HH24:MI');
+  end if;
+  insert into private.orders(
+    id,receipt_hash,seat,pickup_time,order_type,pickup_type,pickup_ref,items,total
+  )
+    values(
+      p_id,encode(sha256(convert_to(p_receipt,'UTF8')),'hex'),trim(p_seat),p_pickup,
+      p_type,pickup_mode,nullif(trim(coalesce(p_ref,p_name,'')),''),normalized,total
+    )
     on conflict(id) do nothing;
   select * into strict o from private.orders where id = p_id
     and receipt_hash = encode(sha256(convert_to(p_receipt,'UTF8')),'hex');
@@ -192,7 +269,14 @@ $$;
 
 -- Explicit public API: defaults do not grant execution to PUBLIC.
 create function public.is_owner() returns boolean language sql stable security invoker set search_path='' as $$ select private.is_owner(); $$;
-create function public.submit_guest_order(p_id uuid,p_receipt text,p_seat text,p_pickup text,p_items jsonb) returns jsonb language sql security invoker set search_path='' as $$ select private.submit_guest_order(p_id,p_receipt,p_seat,p_pickup,p_items); $$;
+create function public.submit_guest_order(
+  p_id uuid,p_receipt text,p_seat text,p_pickup text,p_items jsonb,
+  p_type text default 'dine-in',p_name text default null,
+  p_mode text default 'asap',p_ref text default null
+) returns jsonb language sql security invoker set search_path='' as $$
+  select private.submit_guest_order(p_id,p_receipt,p_seat,p_pickup,p_items,p_type,p_name,p_mode,p_ref);
+$$;
+create function public.pickup_schedule() returns jsonb language sql stable security invoker set search_path='' as $$ select private.pickup_schedule(); $$;
 create function public.guest_order(p_id uuid,p_receipt text) returns jsonb language sql stable security invoker set search_path='' as $$ select private.guest_order(p_id,p_receipt); $$;
 create function public.owner_orders() returns jsonb language sql stable security invoker set search_path='' as $$ select private.owner_orders(); $$;
 create function public.set_order_status(p_id uuid,p_status text) returns void language sql security invoker set search_path='' as $$ select private.set_order_status(p_id,p_status); $$;
@@ -203,7 +287,8 @@ create function public.save_review(p_order_id uuid,p_rating integer,p_body text,
 create function public.delete_review(p_id uuid) returns void language sql security invoker set search_path='' as $$ select private.delete_review(p_id); $$;
 create function public.reply_review(p_id uuid,p_body text) returns void language sql security invoker set search_path='' as $$ select private.reply_review(p_id,p_body); $$;
 
-revoke all on function private.require_customer(), private.order_json(private.orders) from public, anon, authenticated;
+revoke all on function private.require_customer(), private.order_json(private.orders),
+  private.pickup_estimate() from public, anon, authenticated;
 -- Restrict only functions created here; leave any other public functions alone.
 do $$
 declare f record;
@@ -211,11 +296,11 @@ begin
   for f in select p.oid::regprocedure as signature from pg_proc p join pg_namespace n on n.oid=p.pronamespace
     where n.nspname in ('public','private') and p.proname in (
       'is_owner','submit_guest_order','guest_order','owner_orders','set_order_status','claim_order',
-      'my_review_orders','list_reviews','save_review','delete_review','reply_review')
+      'my_review_orders','list_reviews','save_review','delete_review','reply_review','pickup_schedule')
   loop
     execute format('revoke all on function %s from public, anon, authenticated',f.signature);
     execute format('grant execute on function %s to authenticated',f.signature);
-    if split_part(f.signature::text,'(',1) ~ '(submit_guest_order|guest_order|list_reviews)$' then
+    if split_part(f.signature::text,'(',1) ~ '(submit_guest_order|guest_order|list_reviews|pickup_schedule)$' then
       execute format('grant execute on function %s to anon',f.signature);
     end if;
   end loop;

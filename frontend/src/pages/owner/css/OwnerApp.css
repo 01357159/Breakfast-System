@@ -56,6 +56,59 @@
   margin-top: 0;
 }
 
+.order-card-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.order-card-heading h3 {
+  margin: 0;
+}
+
+.order-type-badge {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.order-type-badge.dine-in {
+  background: #ffedd5;
+  color: #c2410c;
+}
+
+.order-type-badge.takeout {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.owner-order-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.owner-order-filters button {
+  padding: 8px 16px;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: white;
+  color: #334155;
+  cursor: pointer;
+  font: inherit;
+}
+
+.owner-order-filters button.active {
+  background: #1e293b;
+  border-color: #1e293b;
+  color: white;
+}
+
 .order-items {
   padding: 8px 12px;
   margin: 12px 0;
