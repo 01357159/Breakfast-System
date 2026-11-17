@@ -175,3 +175,78 @@
     padding: 16px;
   }
 }
+
+/* QR Code 連結頁 */
+.qr-panel code {
+  display: block;
+  margin: 6px 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #f1f5f9;
+  color: #334155;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.qr-block {
+  margin-bottom: 24px;
+}
+
+.qr-block h3 {
+  margin: 0 0 6px;
+}
+
+.qr-block p {
+  margin: 0 0 10px;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.qr-link-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.qr-link-row code {
+  flex: 1;
+}
+
+.qr-link-row button,
+.qr-table-card button {
+  border: none;
+  border-radius: 8px;
+  padding: 6px 12px;
+  background: #2563eb;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.qr-table-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.qr-table-card {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+}
+
+.qr-table-card strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #0f172a;
+}
+
+.qr-note {
+  margin: 0;
+  padding: 12px;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 13px;
+}

@@ -31,6 +31,7 @@ export async function submitGuestOrder({ order, storage, call, randomId, randomT
       p_name: null, p_items: pending.order.items,
       p_mode: pending.order.pickupType === 'scheduled' ? 'scheduled' : 'asap',
       p_ref: pending.order.pickupRef || null,
+      p_parent_id: pending.order.parentOrderId || null,
     });
   } catch (error) {
     // These database errors definitively roll back the call. Network/API errors

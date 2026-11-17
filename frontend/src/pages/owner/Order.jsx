@@ -64,7 +64,14 @@ export default function Order({
           <article className="order-card" key={order.orderId}>
             <h3>{order.orderId}</h3>
 
-            <p>桌號：{order.seat}</p>
+            <p>
+              {order.orderType === 'takeout'
+                ? `取餐識別：${order.pickupRef || '未填'}`
+                : `桌號：${order.tableId || order.seat}`}
+            </p>
+            {order.orderType === 'takeout' && order.pickupNo && (
+              <p className="order-pickup-no">取餐序號：{order.pickupNo}</p>
+            )}
             <p>取餐時間：{order.pickupTime}</p>
             <p>下單時間：{order.createdAt}</p>
 
@@ -73,13 +80,13 @@ export default function Order({
                 <p key={`${order.orderId}-${item.id}-${index}`}>
                   {item.name} × {item.qty}
                   {' — '}
-                  NT${item.subtotal}
+                  NT$ {item.subtotal}
                 </p>
               ))}
             </div>
 
             <p className="order-total">
-              總金額：NT${order.totalPrice}
+              總金額：NT$ {order.totalPrice}
             </p>
 
             <p>
@@ -112,7 +119,7 @@ export default function Order({
                 </>
               )}
 
-              {order.status === 'accepted' && (
+              {(order.status === 'accepted' || order.status === 'making') && (
                 <button
                   type="button"
                   disabled={busyOrder === order.orderId}

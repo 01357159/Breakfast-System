@@ -651,3 +651,79 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* 內用時的外帶子單入口 */
+.menu-sub-order-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 86px;
+  transform: translateX(-50%);
+  width: min(420px, calc(100% - 32px));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  color: #9a3412;
+  font-size: 13px;
+  z-index: 30;
+}
+
+.menu-sub-order-bar button {
+  border: none;
+  border-radius: 8px;
+  padding: 6px 12px;
+  background: #f97316;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.order-status-parent {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fff7ed;
+  color: #c2410c;
+  font-size: 11px;
+}
+
+.order-status-queue {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 12px;
+}
+
+.order-status-model {
+  margin-left: 10px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.order-success-suborder {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed #e2e8f0;
+}
+
+.order-success-suborder h4 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: #9a3412;
+}
+
+.order-success-note {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: 13px;
+}
