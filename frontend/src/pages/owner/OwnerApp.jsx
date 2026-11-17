@@ -1,8 +1,15 @@
 import {
   getMenu,
-  saveMenu,
   MENU_CATEGORIES,
 } from '../../data/menuData';
+
+import {
+  getRemoteMenu,
+  saveRemoteMenu,
+  uploadMenuImage,
+  deleteMenuImage,
+} from '../../data/menuService';
+
 import { useEffect, useState } from 'react';
 import './css/OwnerApp.css';
 import { useAuth } from '../../auth/authContext';
@@ -10,7 +17,11 @@ import AuthControls from '../../auth/AuthControls';
 import ReviewBoard from '../../reviews/ReviewBoard';
 import { ownerOrders, setOrderStatus, readLocalOrders } from '../../data/orderService';
 import { supabase } from '../../lib/supabase';
-import { ORDER_TYPE, orderTypeLabel, normalizeOrderType } from '../../data/orderTypes';
+
+import Dashboard from './Dashboard';
+import Order from './Order';
+import Menu from './Menu';
+import MenuModal from './MenuModal';
 
 function getTodayDateKey() {
   const now = new Date();
@@ -50,6 +61,7 @@ function OwnerDashboard() {
     price: '',
     description: '',
     image: '',
+    imagePath: '',
   });
 
   // 正在編輯哪一個餐點
@@ -82,15 +94,48 @@ function OwnerDashboard() {
   const todayRevenue = completedOrders.reduce(
     (total, order) => total + Number(order.totalPrice || 0),
     0
-  );  
-
+  );
+  
   // 計算今日完成訂單數
   const completedCount = completedOrders.length;
 
-  // 依照取餐方式篩選要顯示的訂單
-  const visibleOrders = orders.filter((order) =>
-    typeFilter === 'all' || normalizeOrderType(order.orderType) === typeFilter
-  );
+  // 從 Supabase 載入菜單
+  useEffect(() => {
+    let alive = true;
+
+    async function loadMenu() {
+      try {
+        const remoteMenu = await getRemoteMenu();
+
+        if (!alive) return;
+
+        // 如果資料庫還沒有菜單，就搬移原本的本機菜單
+        if (remoteMenu.length === 0) {
+          const localMenu = getMenu();
+
+          await saveRemoteMenu(localMenu);
+
+          if (alive) {
+            setMenuItems(localMenu);
+          }
+        } else {
+          // 資料庫已有菜單，直接使用資料庫資料
+          setMenuItems(remoteMenu);
+        }
+      } catch (error) {
+        console.error('載入 Supabase 菜單失敗：', error);
+        if (alive) {
+          setMenuMessage(`菜單載入失敗：${error.message}`);
+        }
+      }
+    }
+
+    loadMenu();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   useEffect(() => {
     // 當其他分頁更新訂單時，自動重新讀取
@@ -155,13 +200,14 @@ function OwnerDashboard() {
       price: '',
       description: '',
       image: '',
+      imagePath: '',
     });
 
     setEditingId(null);
   }
 
   // 新增餐點或修改餐點
-  function handleSaveMenu(event) {
+  async function handleSaveMenu(event) {
     event.preventDefault();
 
     const name = form.name.trim();
@@ -177,43 +223,106 @@ function OwnerDashboard() {
       return;
     }
 
-    let updatedMenu;
+    let uploadedImage = null;
 
-    if (editingId !== null) {
-      // 修改現有餐點
-      updatedMenu = menuItems.map((item) =>
-        item.id === editingId
-          ? {
-              ...item,
-              name,
-              category: form.category,
-              price,
-              description: form.description.trim(),
-              image: form.image.trim() || item.image,
-            }
-          : item
+    try {
+      const currentEditingId = editingId;
+
+      // 先準備餐點 ID
+      const itemId = currentEditingId ?? Date.now();
+
+      const oldItem = menuItems.find(
+        (item) => item.id === currentEditingId
       );
-    } else {
-      // 新增餐點
-      const newItem = {
-        id: Date.now(),
-        name,
-        category: form.category,
-        price,
-        description: form.description.trim(),
-        image: form.image.trim() || 'https://placehold.co/150',
-        available: true,
-      };
 
-      updatedMenu = [...menuItems, newItem];
+      let image = form.image;
+      let imagePath = form.imagePath || '';
+
+      // 如果選擇了新圖片，先上傳到 Supabase Storage
+      if (form.image?.startsWith('data:image/')) {
+        uploadedImage = await uploadMenuImage(form.image, itemId);
+
+        image = uploadedImage.image;
+        imagePath = uploadedImage.imagePath;
+      }
+
+      // 沒有圖片時使用預設圖片
+      if (!image) {
+        image = 'https://placehold.co/150';
+        imagePath = '';
+      }
+
+      let updatedMenu;
+
+      if (currentEditingId !== null) {
+        // 修改現有餐點
+        updatedMenu = menuItems.map((item) =>
+          item.id === currentEditingId
+            ? {
+                ...item,
+                name,
+                category: form.category,
+                price,
+                description: form.description.trim(),
+                image,
+                imagePath,
+              }
+            : item
+        );
+      } else {
+        // 新增餐點
+        const newItem = {
+          id: itemId,
+          name,
+          category: form.category,
+          price,
+          description: form.description.trim(),
+          image,
+          imagePath,
+          available: true,
+        };
+
+        updatedMenu = [...menuItems, newItem];
+      }
+
+      // 將完整菜單儲存到 Supabase
+      await saveRemoteMenu(updatedMenu);
+
+      // 資料庫儲存成功後才更新畫面
+      setMenuItems(updatedMenu);
+
+      // 新圖片成功儲存後，才刪除舊圖片
+      if (
+        oldItem?.imagePath &&
+        oldItem.imagePath !== imagePath
+      ) {
+        try {
+          await deleteMenuImage(oldItem.imagePath);
+        } catch (error) {
+          console.error('舊圖片刪除失敗：', error);
+        }
+      }
+
+      resetForm();
+
+      setMenuMessage(
+        currentEditingId === null
+          ? '餐點新增成功！'
+          : '餐點修改成功！'
+      );
+    } catch (error) {
+      // 如果圖片已上傳，但菜單儲存失敗，就清理新圖片
+      if (uploadedImage?.imagePath) {
+        try {
+          await deleteMenuImage(uploadedImage.imagePath);
+        } catch (deleteError) {
+          console.error('清理新圖片失敗：', deleteError);
+        }
+      }
+
+      console.error('儲存餐點失敗：', error);
+      setMenuMessage(`儲存失敗：${error.message}`);
     }
-
-    saveMenu(updatedMenu);
-    setMenuItems(updatedMenu);
-    resetForm();
-    setMenuMessage(
-      editingId === null ? '餐點新增成功！' : '餐點修改成功！'
-    );
   }
 
   // 將現有餐點載入表單
@@ -224,6 +333,7 @@ function OwnerDashboard() {
       price: String(item.price),
       description: item.description || '',
       image: item.image || '',
+      imagePath: item.imagePath || '',
     });
 
     setEditingId(item.id);
@@ -231,16 +341,22 @@ function OwnerDashboard() {
   }
 
   // 切換餐點上架或下架
-  function handleToggleMenu(itemId) {
+  async function handleToggleMenu(itemId) {
     const updatedMenu = menuItems.map((item) =>
       item.id === itemId
         ? { ...item, available: item.available === false }
         : item
     );
 
-    saveMenu(updatedMenu);
-    setMenuItems(updatedMenu);
-    setMenuMessage('餐點供應狀態已更新');
+    try {
+      await saveRemoteMenu(updatedMenu);
+
+      setMenuItems(updatedMenu);
+      setMenuMessage('餐點供應狀態已更新');
+    } catch (error) {
+      console.error('更新餐點狀態失敗：', error);
+      setMenuMessage(`更新失敗：${error.message}`);
+    }
   }
 
   return (
@@ -273,135 +389,25 @@ function OwnerDashboard() {
       {activeTab === 'reviews' && <section className="owner-panel"><ReviewBoard owner /></section>}
       {orderError && <p role="alert" className="review-error">{orderError}</p>}
 
-      
-      {/* 菜單管理 */}
       {activeTab === 'menu' && (
-        <section className="owner-panel menu-admin">
-          <h2>🍳 菜單管理</h2>
-
-          <form className="menu-form" onSubmit={handleSaveMenu}>
-            <label>
-              餐點名稱
-              <input
-                value={form.name}
-                onChange={(e) => updateForm('name', e.target.value)}
-                placeholder="例如：鮪魚蛋餅"
-                required
-              />
-            </label>
-
-            <label>
-              餐點分類
-              <select
-                value={form.category}
-                onChange={(e) => updateForm('category', e.target.value)}
-              >
-                {MENU_CATEGORIES.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label>
-              價格（元）
-              <input
-                type="number"
-                min="0"
-                step="1"
-                value={form.price}
-                onChange={(e) => updateForm('price', e.target.value)}
-                placeholder="例如：45"
-                required
-              />
-            </label>
-
-            <label>
-              餐點描述
-              <input
-                value={form.description}
-                onChange={(e) => updateForm('description', e.target.value)}
-                placeholder="例如：香酥蛋餅搭配鮮嫩鮪魚"
-              />
-            </label>
-
-            <label>
-              圖片網址（選填）
-              <input
-                type="url"
-                value={form.image}
-                onChange={(e) => updateForm('image', e.target.value)}
-                placeholder="https://..."
-              />
-            </label>
-
-            <div className="menu-form-actions">
-              <button type="submit">
-                {editingId !== null ? '儲存修改' : '新增餐點'}
-              </button>
-
-              {editingId !== null && (
-                <button type="button" onClick={resetForm}>
-                  取消修改
-                </button>
-              )}
-            </div>
-
-            {menuMessage && (
-              <p className="menu-message" role="status">
-                {menuMessage}
-              </p>
-            )}
-          </form>
-
-          <h3>現有餐點（{menuItems.length} 項）</h3>
-
-            <div className="menu-admin-list">
-              {menuItems.map((item) => (
-                <article className="menu-admin-item" key={item.id}>
-                  <div className="menu-admin-info">
-                    <strong>{item.name}</strong>
-                    <span>NT$ {item.price}</span>
-                    <span>
-                      {item.available === false ? '目前已下架' : '供應中'}
-                    </span>
-                  </div>
-
-                <div className="menu-admin-actions">
-                  <button
-                    type="button"
-                    onClick={() => handleEditMenu(item)}
-                  >
-                    編輯
-                  </button>
-
-                  <button
-                     type="button"
-                     onClick={() => handleToggleMenu(item.id)}
-                   >
-                     {item.available === false ? '重新上架' : '下架'}
-                  </button>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
+        <Menu
+            menuItems={menuItems}
+            form={form}
+            editingId={editingId}
+            menuMessage={menuMessage}
+            categories={MENU_CATEGORIES}
+            updateForm={updateForm}
+            handleSaveMenu={handleSaveMenu}
+            resetForm={resetForm}
+            handleEditMenu={handleEditMenu}
+            handleToggleMenu={handleToggleMenu}
+        />
       )}
 
-      <section className="owner-stats">
-        <div className="stat-card revenue-card">
-           <p>今日總營收</p>
-           <h2>
-            NT$ {todayRevenue.toLocaleString('zh-TW')}
-           </h2>
-        </div>
-
-         <div className="stat-card completed-card">
-           <p>已完成訂單</p>
-           <h2>{completedCount} 筆</h2>
-         </div>
-      </section>      
+      <Dashboard
+        todayRevenue={todayRevenue}
+        completedCount={completedCount}
+      />
       
       {activeTab === 'orders' && (
         <section className="owner-panel">
@@ -413,20 +419,22 @@ function OwnerDashboard() {
           </div>
 
           <div className="owner-order-filters" role="group" aria-label="依取餐方式篩選">
-            {[
-              { id: 'all', label: '全部' },
-              { id: ORDER_TYPE.DINE_IN, label: '🍽️ 內用' },
-              { id: ORDER_TYPE.TAKEOUT, label: '🥡 外帶' },
-            ].map(filter => (
-              <button
-                key={filter.id}
-                type="button"
-                className={typeFilter === filter.id ? 'active' : ''}
-                onClick={() => setTypeFilter(filter.id)}
-              >
-                {filter.label}
-              </button>
-            ))}
+            {
+              [
+                { id: 'all', label: '全部' },
+                { id: 'dine-in', label: '🍽️ 內用' },
+                { id: 'takeout', label: '🥡 外帶' },
+              ].map(filter => (
+                <button
+                  key={filter.id}
+                  type="button"
+                  className={typeFilter === filter.id ? 'active' : ''}
+                  onClick={() => setTypeFilter(filter.id)}
+                >
+                  {filter.label}
+                </button>
+              ))
+            }
           </div>
 
           {orders.length === 0 ? (
@@ -435,180 +443,118 @@ function OwnerDashboard() {
             </p>
           ) : visibleOrders.length === 0 ? (
             <p className="empty-message">
-              目前沒有{typeFilter === ORDER_TYPE.TAKEOUT ? '外帶' : '內用'}訂單。
+              目前沒有{typeFilter === 'takeout' ? '外帶' : '內用'}訂單。
             </p>
-          ) : (
-            visibleOrders.map((order) => (
-              <article className="order-card" key={order.orderId}>
-                <div className="order-card-heading">
-                  <h3>{order.orderId}</h3>
-                  <span className={`order-type-badge ${normalizeOrderType(order.orderType)}`}>
-                    {orderTypeLabel(order.orderType)}
-                  </span>
-                </div>
+          ) : (visibleOrders.map((order) => (
+            <article className="order-card" key={order.orderId}>
+              <div className="order-card-heading">
+                <h3>{order.orderId}</h3>
+                <span className={`order-type-badge ${normalizeOrderType(order.orderType)}`}>
+                  {orderTypeLabel(order.orderType)}
+                </span>
+              </div>
 
-                {normalizeOrderType(order.orderType) === ORDER_TYPE.TAKEOUT ? (
-                  <p>取餐識別：<b>{order.pickupRef || '未填寫'}</b></p>
-                ) : (
-                  <p>桌號：{order.seat}</p>
-                )}
-                <div className="order-callout">
-                  #{order.orderId}{order.pickupRef ? ` · ${order.pickupRef}` : ''}
-                </div>
-                <p>
-                  {order.pickupType === 'scheduled' ? '預定取餐' : '盡快取餐'}：約 {order.pickupTime}
-                </p>
-                <p>下單時間：{order.createdAt}</p>
+              {normalizeOrderType(order.orderType) === 'takeout' ? (
+                <p>取餐識別：<b>{order.pickupRef || '未填寫'}</b></p>
+              ) : (
+                <p>桌號：{order.seat}</p>
+              )}
+              <div className="order-callout">
+                #{order.orderId}{order.pickupRef ? ` · ${order.pickupRef}` : ''}
+              </div>
+              <p>
+                {order.pickupType === 'scheduled' ? '預定取餐' : '盡快取餐'}：約 {order.pickupTime}
+              </p>
+              <p>下單時間：{order.createdAt}</p>
 
-                <div className="order-items">
-                  {order.items.map((item, index) => (
-                    <p key={`${order.orderId}-${item.id}-${index}`}>
-                      {item.name} × {item.qty}
-                      {' — '}
-                      NT${item.subtotal}
-                    </p>
-                  ))}
-                </div>
+              <div className="order-items">
+                {order.items.map((item, index) => (
+                  <p key={`${order.orderId}-${item.id}-${index}`}>
+                    {item.name} × {item.qty}
+                    {' — '}
+                    NT${item.subtotal}
+                  </p>
+                ))}
+              </div>
 
-                <p className="order-total">
-                  總金額：NT${order.totalPrice}
-                </p>
+              <p className="order-total">
+                總金額：NT${order.totalPrice}
+              </p>
 
-                <p>
-                  狀態：{statusNames[order.status] || order.status}
-                </p>
+              <p>
+                狀態：{statusNames[order.status] || order.status}
+              </p>
 
-                <div className="order-actions">
-                  {order.status === 'pending' && (
-                    <>
-                      <button
-                        disabled={busyOrder === order.orderId}
-                        onClick={() =>
-                          updateStatus(order.orderId, 'accepted')
-                        }
-                      >
-                        接受訂單
-                      </button>
-
-                      <button
-                        disabled={busyOrder === order.orderId}
-                        className="reject-button"
-                        onClick={() =>
-                          updateStatus(order.orderId, 'rejected')
-                        }
-                      >
-                        婉拒訂單
-                      </button>
-                    </>
-                  )}
-
-                  {order.status === 'accepted' && (
+              <div className="order-actions">
+                {order.status === 'pending' && (
+                  <>
                     <button
                       disabled={busyOrder === order.orderId}
                       onClick={() =>
-                        updateStatus(order.orderId, 'completed')
+                        updateStatus(order.orderId, 'accepted')
                       }
                     >
-                      完成訂單
+                      接受訂單
                     </button>
-                  )}
-                </div>
-              </article>
-            ))
-          )}
+
+                    <button
+                      disabled={busyOrder === order.orderId}
+                      className="reject-button"
+                      onClick={() =>
+                        updateStatus(order.orderId, 'rejected')
+                      }
+                    >
+                      婉拒訂單
+                    </button>
+                  </>
+                )
+                }
+
+                {order.status === 'accepted' && (
+                  <button
+                    disabled={busyOrder === order.orderId}
+                    onClick={() =>
+                      updateStatus(order.orderId, 'completed')
+                    }
+                  >
+                    完成訂單
+                  </button>
+                )
+              </div>
+            </article>
+          )))}
         </section>
+        <Order
+          orders={orders}
+          refreshOrders={refreshOrders}
+          statusNames={statusNames}
+          busyOrder={busyOrder}
+          updateStatus={updateStatus}
+        />
       )}
 
       {editingId !== null && (
-        <div className="menu-modal-backdrop">
-          <section
-            className="menu-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="menu-modal-title"
-          >
-            <div className="menu-modal-header">
-              <h2 id="menu-modal-title">編輯餐點</h2>
-              <button
-                type="button"
-                className="menu-modal-close"
-                onClick={resetForm}
-                aria-label="關閉編輯視窗"
-              >
-                ×
-              </button>
-            </div>
-
-            <form className="menu-modal-form" onSubmit={handleSaveMenu}>
-              <label>
-                餐點名稱
-                <input
-                  value={form.name}
-                  onChange={(e) => updateForm('name', e.target.value)}
-                  required
-                />
-              </label>
-
-              <label>
-                餐點分類
-                <select
-                  value={form.category}
-                  onChange={(e) => updateForm('category', e.target.value)}
-                >
-                  {MENU_CATEGORIES.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label>
-                價格（元）
-                <input
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={form.price}
-                  onChange={(e) => updateForm('price', e.target.value)}
-                  required
-                />
-              </label>
-
-              <label>
-                餐點描述
-                <input
-                  value={form.description}
-                  onChange={(e) => updateForm('description', e.target.value)}
-                />
-              </label>
-
-              <label>
-                圖片網址
-                <input
-                  type="url"
-                  value={form.image}
-                  onChange={(e) => updateForm('image', e.target.value)}
-                  placeholder="https://..."
-                />
-              </label>
-
-              {menuMessage && (
-                <p className="menu-message" role="alert">
-                  {menuMessage}
-                </p>
-              )}
-
-              <div className="menu-modal-actions">
-                <button type="button" onClick={resetForm}>
-                  取消
-                </button>
-                <button type="submit">儲存修改</button>
-              </div>
-            </form>
-          </section>
-        </div>
+        <MenuModal
+          form={form}
+          categories={MENU_CATEGORIES}
+          menuMessage={menuMessage}
+          updateForm={updateForm}
+          resetForm={resetForm}
+        />
       )}
     </main>
   );
+}
+
+// helper: 依取餐方式篩選要顯示的訂單
+function visibleOrdersFilter(orders, typeFilter) {
+  if (typeFilter === 'all') return orders;
+  return orders.filter(order => normalizeOrderType(order.orderType) === typeFilter);
+}
+
+// helper: 依取餐方式篩選
+function normalizeOrderType(orderType) {
+  if (orderType === 'dine-in' || orderType === 'dine_in') return 'dine-in';
+  if (orderType === 'takeout' || orderType === 'take_out') return 'takeout';
+  return orderType;
 }

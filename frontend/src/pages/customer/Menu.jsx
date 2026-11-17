@@ -1,11 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getMenu, MENU_CATEGORIES } from '../../data/menuData';
+import { getRemoteMenu } from '../../data/menuService';
 import CartModal from './CartModal';
 import { customerOrders, placeOrder } from '../../data/orderService';
 import { fetchPickupSchedule } from '../../data/pickupService';
-import { supabase } from '../../lib/supabase';
-import { useAuth } from '../../auth/authContext';
 import { ORDER_TYPE, TAKEOUT_SEAT, normalizeOrderType, orderTypeLabel } from '../../data/orderTypes';
 import './css/Menu.css';
 
@@ -56,6 +55,11 @@ export default function Menu() {
   const [isStatusOpen, setIsStatusOpen] = useState(false);
   const [myOrders, setMyOrders] = useState([]);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
+  // 訂單隊伍過長提醒視窗
+  const [isQueueWarningOpen, setIsQueueWarningOpen] = useState(false);
+
+  // 暫存顧客選擇的取餐時間
+  const [pendingPickupTime, setPendingPickupTime] = useState('');
   const [orderError, setOrderError] = useState('');
   const [placedOrder, setPlacedOrder] = useState(null);
 
@@ -65,21 +69,75 @@ export default function Menu() {
   const memberRef = memberRefSuffix(auth.user);
   const effectivePickupRef = pickupRefDirty ? pickupRef : (pickupRef || memberRef);
 
+  // 從 Supabase 載入菜單
   useEffect(() => {
-    // 頁面開啟時先讀取最新菜單
-    function syncMenu() {
-      setMenuItems(getMenu());
+    let alive = true;
+    let running = false;
+
+    async function syncMenu() {
+      if (running) return;
+
+      running = true;
+
+      try {
+        const remoteMenu = await getRemoteMenu();
+
+        if (!alive) return;
+
+        setMenuItems(remoteMenu);
+        setMenuLoadError('');
+      } catch (error) {
+        console.error('讀取 Supabase 菜單失敗：', error);
+
+        if (!alive) return;
+
+        // Supabase 讀取失敗時，暫時使用本機菜單
+        setMenuItems(getMenu());
+        setMenuLoadError('目前無法同步最新菜單，顯示本機備用資料。');
+      } finally {
+        running = false;
+
+        if (alive) {
+          setMenuLoading(false);
+        }
+      }
     }
 
+    // 頁面開啟時立即讀取
     syncMenu();
 
-    // 當其他分頁修改菜單時，自動更新
-    window.addEventListener('storage', syncMenu);
+    // 每五秒重新讀取，取得老闆最新修改
+    const timer = setInterval(() => {
+      if (!document.hidden) {
+        syncMenu();
+      }
+    }, 5000);
 
     return () => {
-      window.removeEventListener('storage', syncMenu);
+      alive = false;
+      clearInterval(timer);
     };
   }, []);
+
+    // 菜單更新時，同步檢查購物車
+  useEffect(() => {
+    setCart((prev) => {
+      const next = {};
+
+      Object.entries(prev).forEach(([id, quantity]) => {
+        const item = menuItems.find(
+          (menuItem) => String(menuItem.id) === id
+        );
+
+        // 餐點仍存在且正在供應，才保留在購物車
+        if (item && item.available !== false) {
+          next[id] = quantity;
+        }
+      });
+
+      return next;
+    });
+  }, [menuItems]);
 
   useEffect(() => {
     const cardElement = document.querySelector('.customer-app-card');
@@ -109,7 +167,9 @@ export default function Menu() {
         if (alive) setScheduleLoading(false);
       }
     })();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, []);
 
   // 購物車依「取餐方式 + 桌號」分開保存，重新整理或誤觸上一頁都不會遺失。
@@ -242,7 +302,10 @@ export default function Menu() {
       } catch (error) { if (alive) setOrderError(error.message); }
       finally { running = false; }
     }, 5000);
-    return () => { alive = false; clearInterval(timer); };
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
   }, [isStatusOpen, seatNumber, isTakeout, effectivePickupRef]);
 
   const handleBackHome = () => {
@@ -256,6 +319,18 @@ export default function Menu() {
     setCheckoutBusy(true);
     setOrderError('');
     try {
+      // 先確認目前製作中的訂單數量
+      const activeCount = await getActiveOrderCount();
+
+      if (activeCount >= 10) {
+        setPendingPickupTime(pickupTime);
+        setIsQueueWarningOpen(true);
+        return;
+      }
+    } catch (error) {
+      setOrderError(`檢查隊伍狀態失敗：${error.message}`);
+      return;
+    }
 
     let schedule;
     try {
@@ -298,7 +373,7 @@ export default function Menu() {
       pickupRef: isTakeout ? effectivePickupRef.trim() : '',
       pickupTime: finalPickupTime,
       estimatedReadyAt: schedule.estimatedReadyAt,
-      createdDate: (() => {        // 記錄顧客下單的日期
+      createdDate: (() => {
         const now = new Date();
         const year = now.getFullYear();
         const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -322,20 +397,36 @@ export default function Menu() {
     setCart({});
     setIsCartOpen(false);
     setPlacedOrder(submitted);
-    } catch (error) {
-      if (error.message.includes('該時段已滿')) {
-        setPickupTime(null);
-        setOrderError('該時段已滿，請改選');
-        try {
-          const latest = await fetchPickupSchedule();
-          setAvailableSlots(latest.slots || []);
-          setEstimatedReadyAt(latest.estimatedReadyAt || null);
-        } catch { /* 保留原始錯誤訊息，讓顧客可手動重新整理 */ }
-      } else {
-        setOrderError(`送出失敗：${error.message}。請重試，重試會安全地確認前次訂單。`);
-      }
+  } catch (error) {
+    if (error.message.includes('該時段已滿')) {
+      setPickupTime(null);
+      setOrderError('該時段已滿，請改選');
+      try {
+        const latest = await fetchPickupSchedule();
+        setAvailableSlots(latest.slots || []);
+        setEstimatedReadyAt(latest.estimatedReadyAt || null);
+      } catch { /* 保留原始錯誤訊息，讓顧客可手動重新整理 */ }
+    } else {
+      setOrderError(`送出失敗：${error.message}。請重試，重試會安全地確認前次訂單。`);
     }
-    finally { setCheckoutBusy(false); }
+  } finally { setCheckoutBusy(false); }
+};
+
+  // 顧客確認仍要送出
+  const handleConfirmQueueOrder = () => {
+    const pickupTime = pendingPickupTime;
+
+    setIsQueueWarningOpen(false);
+    setPendingPickupTime('');
+
+    // true 代表已經看過提醒，不再重複檢查
+    handleCheckout(pickupTime, true);
+  };
+
+  // 顧客選擇返回
+  const handleBackFromQueueWarning = () => {
+    setIsQueueWarningOpen(false);
+    setPendingPickupTime('');
   };
 
   return (
@@ -400,7 +491,6 @@ export default function Menu() {
           MENU_CATEGORIES.map(cat => {
             const itemsInCat = filteredItems.filter(item => item.category === cat.id);
             if (itemsInCat.length === 0) return null;
-
             return (
               <div 
                 key={cat.id} 
@@ -430,17 +520,18 @@ export default function Menu() {
                                 <span className="counter-num">{qty}</span>
                                 <button className="counter-btn" onClick={() => handleIncrease(item.id)} aria-label={`增加 ${item.name}`}>+</button>
                               </div>
-                            )}
+                            )
+                            }
                           </div>
                         </div>
                         <img src={item.image} alt={item.name} className="menu-item-image" loading="lazy" />
                       </div>
                     );
-                  })}
+                  })}}
                 </div>
               </div>
             );
-          })
+          }))
         )}
       </div>
 
@@ -522,6 +613,55 @@ export default function Menu() {
         </div>
       )}
 
+      {/* 訂單隊伍過長提醒視窗 */}
+      {isQueueWarningOpen && (
+        <div
+          className="cart-modal-overlay"
+          onClick={handleBackFromQueueWarning}
+        >
+          <div
+            className="cart-modal-content queue-warning-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="queue-warning-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="cart-modal-header">
+              <h3 id="queue-warning-title">⏳ 訂單提醒</h3>
+            </div>
+
+            <div className="queue-warning-body">
+              <p>
+                目前訂單隊伍較長，需要額外等候時間。
+              </p>
+
+              <p>
+                請問是否仍要送出訂單？
+              </p>
+            </div>
+
+            <div className="queue-warning-actions">
+              <button
+                type="button"
+                className="queue-back-btn"
+                onClick={handleBackFromQueueWarning}
+              >
+                返回
+              </button>
+
+              <button
+                type="button"
+                className="queue-confirm-btn"
+                onClick={handleConfirmQueueOrder}
+                disabled={checkoutBusy}
+              >
+                仍要送出
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 7. 訂單記錄面板 */}
       {isStatusOpen && (
         <div className="cart-modal-overlay" onClick={() => setIsStatusOpen(false)}>
@@ -549,7 +689,7 @@ export default function Menu() {
                       </span>
                       <span className="order-status-where">
                         {normalizeOrderType(order.orderType) === ORDER_TYPE.TAKEOUT
-                          ? `取餐識別：${order.pickupRef || '—'}`
+                          ? `取餐識別：${order.pickupRef || '—'}` 
                           : `桌號：${order.seat}`}
                       </span>
                     </div>
@@ -597,7 +737,6 @@ export default function Menu() {
           </div>
         </div>
       )}
-
     </div>
   );
 }
