@@ -37,6 +37,20 @@ export async function customerOrders(seat) {
   return orders.filter(Boolean).reverse();
 }
 export const ownerOrders = () => supabase ? rpc('owner_orders') : Promise.resolve(readLocalOrders());
+
+// 查詢目前正在製作中的訂單數量
+export async function getActiveOrderCount() {
+  if (!supabase) {
+    return readLocalOrders().filter(
+      (order) => order.status === 'accepted'
+    ).length;
+  }
+
+  const count = await rpc('active_order_count');
+
+  return Number(count || 0);
+}
+
 export async function setOrderStatus(id, status) {
   if (supabase) return rpc('set_order_status', { p_id: id, p_status: status });
   localStorage.setItem('breakfast_orders', JSON.stringify(readLocalOrders().map(

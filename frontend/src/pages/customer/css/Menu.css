@@ -292,3 +292,62 @@
   cursor: pointer;
   box-shadow: 0 4px 10px rgba(234, 88, 12, 0.25);
 }
+
+
+/* 訂單隊伍過長提醒視窗 */
+.queue-warning-modal {
+  max-width: 420px;
+}
+
+.queue-warning-body {
+  padding: 24px 20px;
+  text-align: center;
+  color: #334155;
+  font-size: 15px;
+  line-height: 1.8;
+}
+
+.queue-warning-body p {
+  margin: 0 0 10px;
+}
+
+.queue-warning-actions {
+  display: flex;
+  gap: 12px;
+  padding: 16px 20px 20px;
+  background-color: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+}
+
+.queue-warning-actions button {
+  flex: 1;
+  padding: 12px;
+  border: none;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.queue-back-btn {
+  background-color: #e2e8f0;
+  color: #334155;
+}
+
+.queue-back-btn:hover {
+  background-color: #cbd5e1;
+}
+
+.queue-confirm-btn {
+  background: linear-gradient(135deg, #f97316, #ea580c);
+  color: white;
+}
+
+.queue-confirm-btn:hover {
+  opacity: 0.9;
+}
+
+.queue-confirm-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
